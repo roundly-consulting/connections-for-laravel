@@ -39,14 +39,16 @@ test('fromModels accepts a permission set', function (): void {
     expect($data->permissions->all())->toBe(['view']);
 });
 
-test('fromModels defaults to an empty permission set', function (): void {
+test('fromModels leaves permissions null when none are supplied', function (): void {
     $user = User::create();
     $team = Team::create();
 
     $data = ConnectionData::fromModels($user, $team);
 
-    expect($data->permissions->all())->toBe([])
-        ->and($data->expiresAt)->toBeNull();
+    expect($data->permissions)->toBeNull()
+        ->and($data->expiresAt)->toBeNull()
+        ->and($data->status)->toBeNull()
+        ->and($data->meta)->toBeNull();
 });
 
 test('it exposes connector and connectable key arrays', function (): void {

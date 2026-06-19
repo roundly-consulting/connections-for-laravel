@@ -11,8 +11,11 @@ use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use RoundlyConsulting\Connections\Database\Factories\ConnectionFactory;
+use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 
 /**
  * @property int $id
@@ -21,6 +24,8 @@ use RoundlyConsulting\Connections\Database\Factories\ConnectionFactory;
  * @property int $connectable_id
  * @property string $connectable_type
  * @property Collection<int, string> $permissions
+ * @property ConnectionStatus $status
+ * @property array<string, mixed>|null $meta
  * @property CarbonInterface|null $expires_at
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
@@ -53,6 +58,8 @@ class Connection extends Model
     {
         return [
             'permissions' => 'collection',
+            'status' => ConnectionStatus::class,
+            'meta' => 'array',
             'expires_at' => 'datetime',
         ];
     }
@@ -75,9 +82,123 @@ class Connection extends Model
         return $this->morphTo();
     }
 
+    /**
+     * Whether the connection grants the given permission. A stored '*' grants
+     * any permission, and a segment wildcard ('posts.*') matches by pattern.
+     */
     public function hasPermission(string $permission): bool
     {
-        return $this->permissions->contains($permission);
+        foreach ($this->permissions as $granted) {
+            if (Str::is((string) $granted, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasAnyPermission(string ...$permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($this->hasPermission($permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function hasAllPermissions(string ...$permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if (! $this->hasPermission($permission)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === ConnectionStatus::Pending;
+    }
+
+    public function isAccepted(): bool
+    {
+        return $this->status === ConnectionStatus::Accepted;
+    }
+
+    public function isBlocked(): bool
+    {
+        return $this->status === ConnectionStatus::Blocked;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * A connection is active when it is accepted and not expired. This is the
+     * predicate that the "active" scope and access checks key off.
+     */
+    public function isActive(): bool
+    {
+        return $this->isAccepted() && ! $this->isExpired();
+    }
+
+    /**
+     * Dot-access a value from the connection's free-form meta bag.
+     */
+    public function meta(string $key, mixed $default = null): mixed
+    {
+        return data_get($this->meta, $key, $default);
+    }
+
+    /**
+     * @param  Builder<Connection>  $query
+     * @return Builder<Connection>
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query
+            ->where('status', ConnectionStatus::Accepted->value)
+            ->where(function (Builder $query): void {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+            });
+    }
+
+    /**
+     * @param  Builder<Connection>  $query
+     * @return Builder<Connection>
+     */
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', Carbon::now());
+    }
+
+    /**
+     * @param  Builder<Connection>  $query
+     * @return Builder<Connection>
+     */
+    public function scopeExpiringSoon(Builder $query, int $days = 7): Builder
+    {
+        return $query
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', Carbon::now())
+            ->where('expires_at', '<=', Carbon::now()->addDays($days));
+    }
+
+    /**
+     * @param  Builder<Connection>  $query
+     * @return Builder<Connection>
+     */
+    public function scopeWithPermission(Builder $query, string $permission): Builder
+    {
+        return $query->whereJsonContains('permissions', $permission);
     }
 
     protected static function newFactory(): ConnectionFactory
