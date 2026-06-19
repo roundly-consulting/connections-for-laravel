@@ -7,7 +7,7 @@ namespace RoundlyConsulting\Connections;
 use RoundlyConsulting\Connections\Actions\PruneConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 
-final class ConnectionManager
+class ConnectionManager
 {
     /**
      * Start a fluent connection builder between two models.
