@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Connections\Concerns\HasConnections;
+use RoundlyConsulting\Connections\Contracts\Connectable;
+
+class {{ class }} extends Model implements Connectable
+{
+    use HasConnections;
+}

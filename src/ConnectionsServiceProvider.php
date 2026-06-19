@@ -7,6 +7,8 @@ namespace RoundlyConsulting\Connections;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use RoundlyConsulting\Connections\Commands\MakeConnectableCommand;
+use RoundlyConsulting\Connections\Commands\NotifyExpiringConnectionsCommand;
 use RoundlyConsulting\Connections\Commands\PruneConnectionsCommand;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 
@@ -29,6 +31,8 @@ final class ConnectionsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 PruneConnectionsCommand::class,
+                NotifyExpiringConnectionsCommand::class,
+                MakeConnectableCommand::class,
             ]);
 
             $this->publishes([
