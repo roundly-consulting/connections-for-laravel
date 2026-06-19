@@ -18,6 +18,8 @@ return new class extends Migration
             $table->morphs('connector');
             $table->morphs('connectable');
             $table->json('permissions');
+            $table->string('status')->default('accepted')->index();
+            $table->json('meta')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->softDeletes();

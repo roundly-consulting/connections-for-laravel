@@ -76,4 +76,60 @@ return [
 
     'register_gate' => env('CONNECTIONS_REGISTER_GATE', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Default Permissions
+    |--------------------------------------------------------------------------
+    |
+    | Permissions applied to a new connection when the caller supplies none at
+    | all. An explicit empty array still means "no permissions" — only an
+    | absent/null permission set falls back to this list.
+    |
+    */
+
+    'default_permissions' => [],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Status
+    |--------------------------------------------------------------------------
+    |
+    | The status a connection is created with when none is specified. The
+    | default of "accepted" keeps connect() producing immediately-live links.
+    | Set to "pending" to model an invitation flow by default. One of:
+    | pending, accepted, blocked.
+    |
+    */
+
+    'default_status' => env('CONNECTIONS_DEFAULT_STATUS', 'accepted'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Enforce Active On Check
+    |--------------------------------------------------------------------------
+    |
+    | When true, access checks (hasPermissionThroughConnection / can) and
+    | isConnectedTo only count connections that are active — accepted and not
+    | expired. Pending, blocked, and expired links therefore grant nothing.
+    | Set to false to treat expiry/status as advisory (the pre-v1.1 behaviour).
+    |
+    */
+
+    'enforce_active_on_check' => env('CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Expiry
+    |--------------------------------------------------------------------------
+    |
+    | When set and the caller supplies no expiry, new connections expire after
+    | this interval. Accepts a relative string ("30 days", "2 weeks") or an
+    | integer number of seconds. Null means connections never expire by default.
+    |
+    */
+
+    'expiry' => [
+        'default' => env('CONNECTIONS_EXPIRY_DEFAULT'),
+    ],
+
 ];
