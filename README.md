@@ -5,6 +5,10 @@ optional **expirations**. Connect any model to any other model — a user to a t
 organization to a project — record what the connection is allowed to do, and let expired
 connections prune themselves.
 
+A fluent `Connections` facade, expressive trait verbs, lifecycle actions, events, and a
+prune command make the common operations — connect, disconnect, grant, revoke, sync, check —
+one readable line each.
+
 ## Requirements
 
 - PHP 8.3+
@@ -33,34 +37,54 @@ php artisan vendor:publish --tag="connections-config"
 
 ## Configuration
 
-The published config file (`config/connections.php`) exposes a single key:
+The package works with zero configuration. Publish `config/connections.php` to override any
+of the keys below.
 
 ```php
 return [
 
     // The Eloquent model used to represent a connection. Swap it for your own
-    // subclass of RoundlyConsulting\Connections\Connection if you need to extend
-    // the default behaviour.
-    'model' => RoundlyConsulting\Connections\Connection::class,
+    // subclass of RoundlyConsulting\Connections\Models\Connection to extend behaviour.
+    'model' => RoundlyConsulting\Connections\Models\Connection::class,
+
+    // The database table that stores connections. The migration reads this value.
+    'table' => env('CONNECTIONS_TABLE', 'connections'),
+
+    // In-request memoisation of resolved connections. Writes invalidate it automatically.
+    'cache' => [
+        'enabled' => env('CONNECTIONS_CACHE_ENABLED', true),
+    ],
+
+    // Dispatch lifecycle events as connections change.
+    'events' => [
+        'enabled' => env('CONNECTIONS_EVENTS_ENABLED', true),
+    ],
+
+    // Register a Gate::before check so $user->can('permission', $connectable) works.
+    'register_gate' => env('CONNECTIONS_REGISTER_GATE', false),
 
 ];
 ```
 
-| Key     | Type            | Default        | Purpose                                                        |
-|---------|-----------------|----------------|----------------------------------------------------------------|
-| `model` | `class-string`  | `Connection::class` | The model class used when reading and writing connections. |
+| Key             | Type           | Default                | Env                          | Purpose |
+|-----------------|----------------|------------------------|------------------------------|---------|
+| `model`         | `class-string` | `Connection::class`    | —                            | Model class used when reading and writing connections. |
+| `table`         | `string`       | `connections`          | `CONNECTIONS_TABLE`          | Table that stores connections; read by the migration. |
+| `cache.enabled` | `bool`         | `true`                 | `CONNECTIONS_CACHE_ENABLED`  | In-request connection cache. Disable to always re-query. |
+| `events.enabled`| `bool`         | `true`                 | `CONNECTIONS_EVENTS_ENABLED` | Dispatch lifecycle events. |
+| `register_gate` | `bool`         | `false`                | `CONNECTIONS_REGISTER_GATE`  | Fall a host `Gate` check through to connection permissions. |
 
 ## Usage
 
 ### Make a model connectable
 
-Add the `HasConnections` trait and implement the `Connectable` interface on any model that
+Add the `HasConnections` trait and implement the `Connectable` contract on any model that
 should take part in connections:
 
 ```php
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Connections\Concerns\HasConnections;
-use RoundlyConsulting\Connections\Interfaces\Connectable;
+use RoundlyConsulting\Connections\Contracts\Connectable;
 
 class User extends Model implements Connectable
 {
@@ -76,87 +100,166 @@ class Team extends Model implements Connectable
 A model can be both a **connector** (the side that initiates a connection) and a
 **connectable** (the side a connection points to).
 
-### Create a connection
+### The `Connections` facade (fluent builder)
 
-Use the `CreateConnection` action. Pass an optional collection of permission strings and an
-optional expiration. Creating a connection between the same two models again updates it
-rather than duplicating it.
+The `Connections` facade is the most expressive way to work with connections:
 
 ```php
-use Illuminate\Support\Carbon;
-use RoundlyConsulting\Connections\Actions\CreateConnection;
+use RoundlyConsulting\Connections\Facades\Connections;
 
-$connection = (new CreateConnection)->execute(
-    connector: $user,
-    connectable: $team,
-    permissions: collect(['view', 'edit']),
-    expiresAt: Carbon::now()->addMonth(),
-);
+// Create or update a connection (idempotent), with permissions and an expiry.
+Connections::between($user, $team)
+    ->withPermissions('view', 'edit')
+    ->expiresIn(now()->addMonth())   // CarbonInterface, CarbonInterval, or seconds
+    ->connect();
+
+// Defer the connectable until later with from()->to().
+Connections::from($user)->to($team)->withPermissions('view')->connect();
+
+// Permission lifecycle (grant/sync auto-create the connection if absent).
+Connections::between($user, $team)->grant('publish');
+Connections::between($user, $team)->revoke('publish');
+Connections::between($user, $team)->sync('view', 'edit');   // exact set
+
+// Move the expiry, or clear it with null.
+Connections::between($user, $team)->extend(now()->addYear());
+Connections::between($user, $team)->extend(null);
+
+// Checks.
+Connections::between($user, $team)->exists();      // bool
+Connections::between($user, $team)->can('edit');   // bool
+
+// Remove the connection (soft delete).
+Connections::between($user, $team)->disconnect();
+
+// Remove all expired connections, returning how many were removed.
+$removed = Connections::prune();
 ```
 
-### Inspect connections
+The cache is invalidated automatically on every write, so a check after a write reflects the
+change without any `force` flag.
 
-The `HasConnections` trait adds query helpers to the connector and connectable sides:
+### Trait verbs
+
+If you prefer model methods, `HasConnections` exposes the same lifecycle:
 
 ```php
-// Does $user have a connection pointing at $team?
-$user->isConnectedTo($team);          // bool
+$user->connectTo($team, ['view', 'edit'], now()->addMonth()); // Connection
+$user->disconnectFrom($team);                                  // void
+$user->grantThroughConnection($team, 'publish');               // Connection
+$user->revokeThroughConnection($team, 'publish');              // Connection
+$user->syncConnectionPermissions($team, ['view']);             // Connection
+$user->permissionsThroughConnection($team);                    // Collection<int, string>
+```
 
-// Is $user connected to any model of a given morph type?
-$user->isConnectedToAny($team->getMorphClass());
+### Inspecting connections
 
-// From the connectable side: is $user one of $team's connectors?
-$team->hasConnector($user);           // bool
+```php
+$user->isConnectedTo($team);                       // bool
+$user->isConnectedToAny($team->getMorphClass());   // bool
+$team->hasConnector($user);                        // bool
+$team->hasConnectorFromAny($user->getMorphClass());// bool
 
-// Does $team have any connector of a given morph type?
-$team->hasConnectorFromAny($user->getMorphClass());
-
-// Eloquent relations are available too:
 $user->connections;  // connections this model initiated
 $team->connectors;   // connections pointing at this model
 ```
 
-### Check permissions
-
-Permissions are stored per connection. Check whether a connector holds a permission through
-its connection to a given connectable:
+### Checking permissions
 
 ```php
-$user->hasPermissionThroughConnection($team, 'edit'); // bool
+$user->hasPermissionThroughConnection($team, 'edit');             // bool
+$user->hasPermissionThroughConnection($team, 'edit', force: true);// bypass the cache
+$connection->hasPermission('edit');                               // bool on a Connection
 ```
 
-Lookups are cached in memory for the duration of the request. Pass `force: true` to bypass
-the cache and re-query after changing a connection:
+### Actions
+
+Each operation is also a standalone action you can resolve from the container and unit test.
+`CreateConnection::execute()` keeps its original positional signature for backward
+compatibility.
 
 ```php
-$user->hasPermissionThroughConnection($team, 'edit', force: true);
+use RoundlyConsulting\Connections\Actions\CreateConnection;
+use RoundlyConsulting\Connections\Actions\GrantPermissions;
+use RoundlyConsulting\Connections\Actions\RevokePermissions;
+use RoundlyConsulting\Connections\Actions\SyncPermissions;
+use RoundlyConsulting\Connections\Actions\ExtendConnection;
+use RoundlyConsulting\Connections\Actions\DisconnectConnection;
+use RoundlyConsulting\Connections\Actions\PruneConnections;
+
+app(CreateConnection::class)->execute($user, $team, collect(['view']), now()->addMonth());
+app(GrantPermissions::class)->execute($user, $team, 'publish');
+app(RevokePermissions::class)->execute($user, $team, 'publish');
+app(SyncPermissions::class)->execute($user, $team, 'view', 'edit');
+app(ExtendConnection::class)->execute($user, $team, now()->addYear());
+app(DisconnectConnection::class)->execute($user, $team);
+app(PruneConnections::class)->execute();
 ```
 
-You can also check a permission directly on a `Connection` instance:
+`grant` and `sync` auto-create the connection when none exists. `disconnect`, `revoke`, and
+`extend` throw `RoundlyConsulting\Connections\Exceptions\ConnectionNotFound` when there is no
+connection.
+
+### Events
+
+When `connections.events.enabled` is true (the default), the following events are dispatched:
 
 ```php
-$connection->hasPermission('edit'); // bool
+use RoundlyConsulting\Connections\Events\ConnectionCreated;
+use RoundlyConsulting\Connections\Events\ConnectionUpdated;
+use RoundlyConsulting\Connections\Events\ConnectionRemoved;
+use RoundlyConsulting\Connections\Events\ConnectionPermissionsChanged;
 ```
 
-### Expiring connections
+Each carries the affected `Connection`; `ConnectionPermissionsChanged` also carries the
+`$previous` and `$current` permission lists.
 
-A connection with an `expires_at` in the past is considered prunable. The `Connection` model
-uses Laravel's mass pruning, so you can remove expired connections with the scheduler or by
-running:
+### Gate integration (opt-in)
+
+Set `connections.register_gate` to `true` to register a `Gate::before` check so a host app
+can authorize through connections:
+
+```php
+$user->can('publish', $team); // true when $user has the 'publish' permission to $team
+```
+
+It is off by default so it never surprises a host's own authorization.
+
+### Pruning expired connections
+
+A connection whose `expires_at` is in the past is prunable. Remove expired connections with
+the package command:
 
 ```bash
-php artisan model:prune --model="RoundlyConsulting\Connections\Connection"
+php artisan connections:prune
+```
+
+Laravel's native mass pruning still works too:
+
+```bash
+php artisan model:prune --model="RoundlyConsulting\Connections\Models\Connection"
 ```
 
 ## Public API
 
-| Type      | Class / member                                                  |
-|-----------|-----------------------------------------------------------------|
-| Action    | `RoundlyConsulting\Connections\Actions\CreateConnection`        |
-| Model     | `RoundlyConsulting\Connections\Connection`                      |
-| Trait     | `RoundlyConsulting\Connections\Concerns\HasConnections`         |
-| Interface | `RoundlyConsulting\Connections\Interfaces\Connectable`          |
-| Factory   | `RoundlyConsulting\Connections\Database\Factories\ConnectionFactory` |
+| Type      | Class / member                                                            |
+|-----------|---------------------------------------------------------------------------|
+| Facade    | `RoundlyConsulting\Connections\Facades\Connections`                       |
+| Manager   | `RoundlyConsulting\Connections\ConnectionManager`                         |
+| Builder   | `RoundlyConsulting\Connections\PendingConnection`                         |
+| Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ExtendConnection`, `PruneConnections` |
+| DTOs      | `DataTransferObjects\ConnectionData`, `DataTransferObjects\PermissionSet` |
+| Events    | `Events\ConnectionCreated`, `ConnectionUpdated`, `ConnectionRemoved`, `ConnectionPermissionsChanged` |
+| Exceptions| `Exceptions\ConnectionNotFound`, `Exceptions\MissingConnectable`          |
+| Command   | `connections:prune` (`Commands\PruneConnectionsCommand`)                  |
+| Model     | `RoundlyConsulting\Connections\Models\Connection`                         |
+| Trait     | `RoundlyConsulting\Connections\Concerns\HasConnections`                   |
+| Contract  | `RoundlyConsulting\Connections\Contracts\Connectable`                     |
+| Factory   | `RoundlyConsulting\Connections\Database\Factories\ConnectionFactory`      |
+
+> The legacy `RoundlyConsulting\Connections\Connection` model class and
+> `RoundlyConsulting\Connections\Interfaces\Connectable` interface remain as
+> backward-compatible aliases. New code should use the `Models\` and `Contracts\` names.
 
 ## Testing
 

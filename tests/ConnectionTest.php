@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
-use RoundlyConsulting\Connections\Connection;
+use RoundlyConsulting\Connections\Models\Connection;
 
 test('it returns prunable query', function () {
     Carbon::setTestNow('2023-09-08 09:30:00');
@@ -46,4 +46,8 @@ test('it builds from its factory with sane defaults', function () {
         ->toBeInstanceOf(Connection::class)
         ->permissions->toBeEmpty()
         ->expires_at->toBeNull();
+});
+
+test('the legacy Connection class remains an alias of the Models class', function () {
+    expect(is_a(RoundlyConsulting\Connections\Connection::class, Connection::class, true))->toBeTrue();
 });

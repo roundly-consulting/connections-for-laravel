@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Connections\Tests;
 
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Connections\Concerns\HasConnections;
-use RoundlyConsulting\Connections\Interfaces\Connectable;
+use RoundlyConsulting\Connections\Contracts\Connectable;
 
 class Team extends Model implements Connectable
 {
