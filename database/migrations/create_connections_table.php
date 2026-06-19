@@ -10,7 +10,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('connections', function (Blueprint $table): void {
+        $table = config('connections.table');
+        $table = is_string($table) ? $table : 'connections';
+
+        Schema::create($table, function (Blueprint $table): void {
             $table->id();
             $table->morphs('connector');
             $table->morphs('connectable');
@@ -18,6 +21,11 @@ return new class extends Migration
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
+
+            $table->unique(
+                ['connector_type', 'connector_id', 'connectable_type', 'connectable_id'],
+                'connections_morph_unique',
+            );
         });
     }
 };

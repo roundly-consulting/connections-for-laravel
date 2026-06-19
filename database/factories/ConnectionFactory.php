@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Connections\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
-use RoundlyConsulting\Connections\Connection;
+use RoundlyConsulting\Connections\Models\Connection;
 
 /** @extends Factory<Connection> */
 final class ConnectionFactory extends Factory
