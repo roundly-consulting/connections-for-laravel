@@ -7,7 +7,14 @@ connections prune themselves.
 
 A fluent `Connections` facade, expressive trait verbs, lifecycle actions, events, and a
 prune command make the common operations — connect, disconnect, grant, revoke, sync, check —
-one readable line each.
+one readable line each. Connections can also model **invitation flows** (pending → accepted /
+blocked), carry free-form **metadata**, be operated on in **bulk**, and matched with
+**wildcard permissions** and **query scopes**.
+
+> **Behaviour change in 1.1:** access checks now require a connection to be **active**
+> (accepted and not expired) by default (`connections.enforce_active_on_check`). An expired or
+> non-accepted connection no longer grants permission. Set the flag to `false` to restore the
+> pre-1.1 "expiry is advisory" behaviour.
 
 ## Requirements
 
@@ -63,16 +70,34 @@ return [
     // Register a Gate::before check so $user->can('permission', $connectable) works.
     'register_gate' => env('CONNECTIONS_REGISTER_GATE', false),
 
+    // Permissions applied to a new connection when the caller supplies none.
+    'default_permissions' => [],
+
+    // Status a connection is created with when none is given (pending|accepted|blocked).
+    'default_status' => env('CONNECTIONS_DEFAULT_STATUS', 'accepted'),
+
+    // When true, access checks only count active (accepted + not expired) connections.
+    'enforce_active_on_check' => env('CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK', true),
+
+    // Default expiry for new connections: a relative string ("30 days") or seconds.
+    'expiry' => [
+        'default' => env('CONNECTIONS_EXPIRY_DEFAULT'),
+    ],
+
 ];
 ```
 
-| Key             | Type           | Default                | Env                          | Purpose |
-|-----------------|----------------|------------------------|------------------------------|---------|
-| `model`         | `class-string` | `Connection::class`    | —                            | Model class used when reading and writing connections. |
-| `table`         | `string`       | `connections`          | `CONNECTIONS_TABLE`          | Table that stores connections; read by the migration. |
-| `cache.enabled` | `bool`         | `true`                 | `CONNECTIONS_CACHE_ENABLED`  | In-request connection cache. Disable to always re-query. |
-| `events.enabled`| `bool`         | `true`                 | `CONNECTIONS_EVENTS_ENABLED` | Dispatch lifecycle events. |
-| `register_gate` | `bool`         | `false`                | `CONNECTIONS_REGISTER_GATE`  | Fall a host `Gate` check through to connection permissions. |
+| Key                       | Type            | Default             | Env                                | Purpose |
+|---------------------------|-----------------|---------------------|------------------------------------|---------|
+| `model`                   | `class-string`  | `Connection::class` | —                                  | Model class used when reading and writing connections. |
+| `table`                   | `string`        | `connections`       | `CONNECTIONS_TABLE`                | Table that stores connections; read by the migration. |
+| `cache.enabled`           | `bool`          | `true`              | `CONNECTIONS_CACHE_ENABLED`        | In-request connection cache. Disable to always re-query. |
+| `events.enabled`          | `bool`          | `true`              | `CONNECTIONS_EVENTS_ENABLED`       | Dispatch lifecycle events. |
+| `register_gate`           | `bool`          | `false`             | `CONNECTIONS_REGISTER_GATE`        | Fall a host `Gate` check through to connection permissions. |
+| `default_permissions`     | `list<string>`  | `[]`                | —                                  | Permissions applied when a connection is created with none. An explicit empty set stays empty. |
+| `default_status`          | `string`        | `accepted`          | `CONNECTIONS_DEFAULT_STATUS`       | Status new connections start in (`pending`/`accepted`/`blocked`). |
+| `enforce_active_on_check` | `bool`          | `true`              | `CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK` | Require accepted + not-expired for access checks. `false` = pre-1.1 behaviour. |
+| `expiry.default`          | `string\|int\|null` | `null`          | `CONNECTIONS_EXPIRY_DEFAULT`       | Default expiry applied when none is given. |
 
 ## Usage
 
@@ -152,6 +177,94 @@ $user->syncConnectionPermissions($team, ['view']);             // Connection
 $user->permissionsThroughConnection($team);                    // Collection<int, string>
 ```
 
+### Invitations (pending → accepted / blocked)
+
+Model an approval flow by creating a connection in the `pending` state and letting the
+receiving side accept or block it:
+
+```php
+// Connector side: send an invitation (a pending connection).
+Connections::between($user, $team)->withPermissions('view')->invite();
+
+// Receiving side accepts or blocks.
+$team->acceptConnectionFrom($user);  // status → accepted (now active)
+$team->blockConnectionFrom($user);   // status → blocked (grants nothing)
+
+// Or drive it from the connector / builder.
+Connections::between($user, $team)->accept();
+Connections::between($user, $team)->block();
+$user->inviteConnection($team);
+
+// Model helpers.
+$connection->isPending();
+$connection->isAccepted();
+$connection->isBlocked();
+$connection->isActive();   // accepted AND not expired
+```
+
+Only **active** connections grant permissions and count for `isConnectedTo` while
+`enforce_active_on_check` is on (the default).
+
+### Connection metadata
+
+Attach free-form context to a connection with a JSON `meta` bag:
+
+```php
+Connections::between($user, $team)
+    ->withMeta(['invited_by' => $admin->id, 'role' => ['label' => 'owner']])
+    ->connect();
+
+$connection->meta('role.label');           // 'owner' (dot access)
+$connection->meta('missing', 'fallback');  // 'fallback'
+
+// Re-connecting merges meta by default; replaceMeta() overwrites instead.
+Connections::between($user, $team)->withMeta(['note' => 'hi'])->connect();          // merge
+Connections::between($user, $team)->withMeta(['note' => 'hi'])->replaceMeta()->connect();
+
+// The trait verb takes meta too.
+$user->connectTo($team, ['view'], now()->addMonth(), ['source' => 'import']);
+```
+
+### Bulk operations
+
+Operate on many connectables at once, or reconcile an exact set:
+
+```php
+// Touch many targets in one call (each still emits its own event).
+Connections::from($user)->toMany([$teamA, $teamB])->withPermissions('view')->connectAll();
+Connections::from($user)->toMany($teams)->disconnectAll();
+Connections::from($user)->toMany($teams)->grantAll('publish');
+Connections::from($user)->toMany($teams)->revokeAll('publish');
+
+// Reconcile to exactly this set: connect missing, disconnect extras, update overlap.
+$result = $user->syncConnections([$teamA, $teamC]);
+$result->attached;  // list of newly connected ids
+$result->detached;  // list of disconnected ids
+$result->updated;   // list of ids that already existed
+
+// Per-target attributes via a map or SyncTarget DTOs.
+use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
+
+$user->syncConnections([
+    ['model' => $teamA, 'permissions' => ['view', 'edit']],
+    new SyncTarget($teamB, ['publish'], now()->addDays(30)),
+]);
+```
+
+### Toggle, reconnect & restore
+
+```php
+// Connect if absent, disconnect if present.
+Connections::between($user, $team)->toggle();   // ?Connection
+$user->toggleConnection($team);
+
+// Restore a previously soft-deleted connection (or connect afresh if none trashed),
+// firing ConnectionRestored. Avoids the unique-index collision a fresh insert would hit.
+Connections::between($user, $team)->reconnect();
+Connections::between($user, $team)->restore();  // alias
+$user->reconnectTo($team);
+```
+
 ### Inspecting connections
 
 ```php
@@ -169,7 +282,46 @@ $team->connectors;   // connections pointing at this model
 ```php
 $user->hasPermissionThroughConnection($team, 'edit');             // bool
 $user->hasPermissionThroughConnection($team, 'edit', force: true);// bypass the cache
-$connection->hasPermission('edit');                               // bool on a Connection
+$user->hasAnyPermissionThroughConnection($team, 'view', 'edit');  // bool
+$user->hasAllPermissionsThroughConnection($team, 'view', 'edit'); // bool
+
+$connection->hasPermission('edit');             // bool on a Connection
+$connection->hasAnyPermission('view', 'edit');  // bool
+$connection->hasAllPermissions('view', 'edit'); // bool
+
+// Clear every permission on a connection.
+Connections::between($user, $team)->clearPermissions();
+$user->clearConnectionPermissions($team);
+```
+
+#### Wildcard permissions
+
+A connection whose permission set contains `*` passes any permission check, and a segment
+wildcard like `posts.*` matches `posts.edit`. Sets without a wildcard behave exactly as before
+(this is purely opt-in by the stored data).
+
+```php
+Connections::between($user, $team)->withPermissions('posts.*')->connect();
+$user->hasPermissionThroughConnection($team, 'posts.edit');  // true
+$user->hasPermissionThroughConnection($team, 'users.edit');  // false
+```
+
+### Query scopes & typed fetches
+
+```php
+// Constrained relations (return MorphMany you can chain ->get()/->count()).
+$user->activeConnections();                 // accepted + not expired
+$user->expiredConnections();                // past expiry
+$user->expiringConnections($days = 7);      // expiring within N days
+$user->connectionsWithPermission('publish');
+
+// Eloquent scopes on the model / relation.
+$user->connections()->active()->get();
+$user->connections()->expiringSoon(14)->get();
+
+// Fetch the connected models of a given type (FQCN or morph alias), not the Connection rows.
+$user->connectablesOfType(Team::class);   // Collection<Team>
+$team->connectorsOfType(User::class);     // Collection<User>
 ```
 
 ### Actions
@@ -209,10 +361,17 @@ use RoundlyConsulting\Connections\Events\ConnectionCreated;
 use RoundlyConsulting\Connections\Events\ConnectionUpdated;
 use RoundlyConsulting\Connections\Events\ConnectionRemoved;
 use RoundlyConsulting\Connections\Events\ConnectionPermissionsChanged;
+use RoundlyConsulting\Connections\Events\ConnectionInvited;   // a pending connection was created
+use RoundlyConsulting\Connections\Events\ConnectionAccepted;  // status → accepted
+use RoundlyConsulting\Connections\Events\ConnectionBlocked;   // status → blocked
+use RoundlyConsulting\Connections\Events\ConnectionRestored;  // a soft-deleted link was restored
+use RoundlyConsulting\Connections\Events\ConnectionExpiring;  // dispatched by notify-expiring
 ```
 
 Each carries the affected `Connection`; `ConnectionPermissionsChanged` also carries the
-`$previous` and `$current` permission lists.
+`$previous` and `$current` permission lists, and `ConnectionExpiring` carries
+`$daysUntilExpiry`. Lean on these events for auditing — for example, a listener on
+`ConnectionAccepted` that writes to your own audit log; the package ships no audit table.
 
 ### Gate integration (opt-in)
 
@@ -240,21 +399,62 @@ Laravel's native mass pruning still works too:
 php artisan model:prune --model="RoundlyConsulting\Connections\Models\Connection"
 ```
 
+### Notifying about expiring connections
+
+Schedule the opt-in command and listen for `ConnectionExpiring` to notify before a connection
+lapses (no new table — it leans entirely on the event):
+
+```bash
+php artisan connections:notify-expiring --days=7
+```
+
+### Generating a connectable model
+
+Scaffold a new model that is already `Connectable`:
+
+```bash
+php artisan make:connectable Organisation        # writes app/Models/Organisation.php
+php artisan make:connectable User --existing      # prints the two lines to add to an existing model
+```
+
+### Testing helper
+
+`Connections::fake()` swaps the manager for a recording fake — operations still hit your test
+database (so reads work), but calls are captured for assertions, in the spirit of
+`Bus::fake()`:
+
+```php
+use RoundlyConsulting\Connections\Facades\Connections;
+
+$fake = Connections::fake();
+
+Connections::between($user, $team)->withPermissions('publish')->connect();
+
+$fake->assertConnected($user, $team);
+$fake->assertHasPermissionThrough($user, $team, 'publish');
+$fake->assertInvited($user, $team);
+$fake->assertAccepted($user, $team);
+$fake->assertBlocked($user, $team);
+$fake->assertConnectedTimes(1);
+```
+
 ## Public API
 
 | Type      | Class / member                                                            |
 |-----------|---------------------------------------------------------------------------|
-| Facade    | `RoundlyConsulting\Connections\Facades\Connections`                       |
+| Facade    | `RoundlyConsulting\Connections\Facades\Connections` (`::fake()` for tests) |
 | Manager   | `RoundlyConsulting\Connections\ConnectionManager`                         |
 | Builder   | `RoundlyConsulting\Connections\PendingConnection`                         |
-| Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ExtendConnection`, `PruneConnections` |
-| DTOs      | `DataTransferObjects\ConnectionData`, `DataTransferObjects\PermissionSet` |
-| Events    | `Events\ConnectionCreated`, `ConnectionUpdated`, `ConnectionRemoved`, `ConnectionPermissionsChanged` |
+| Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ExtendConnection`, `PruneConnections`, `AcceptConnection`, `BlockConnection`, `RestoreConnection`, `BulkConnect`, `BulkDisconnect`, `SyncConnections` |
+| DTOs      | `DataTransferObjects\ConnectionData`, `PermissionSet`, `SyncResult`, `SyncTarget` |
+| Enum      | `Enums\ConnectionStatus` (`Pending`/`Accepted`/`Blocked`)                 |
+| Events    | `Events\ConnectionCreated`, `ConnectionUpdated`, `ConnectionRemoved`, `ConnectionPermissionsChanged`, `ConnectionInvited`, `ConnectionAccepted`, `ConnectionBlocked`, `ConnectionRestored`, `ConnectionExpiring` |
 | Exceptions| `Exceptions\ConnectionNotFound`, `Exceptions\MissingConnectable`          |
-| Command   | `connections:prune` (`Commands\PruneConnectionsCommand`)                  |
+| Commands  | `connections:prune`, `connections:notify-expiring`, `make:connectable`    |
 | Model     | `RoundlyConsulting\Connections\Models\Connection`                         |
 | Trait     | `RoundlyConsulting\Connections\Concerns\HasConnections`                   |
 | Contract  | `RoundlyConsulting\Connections\Contracts\Connectable`                     |
+| Testing   | `Testing\ConnectionFake`                                                  |
 | Factory   | `RoundlyConsulting\Connections\Database\Factories\ConnectionFactory`      |
 
 > The legacy `RoundlyConsulting\Connections\Connection` model class and
