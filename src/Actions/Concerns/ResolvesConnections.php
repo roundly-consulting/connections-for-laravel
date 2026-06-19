@@ -49,6 +49,20 @@ trait ResolvesConnections
             ?? throw ConnectionNotFound::between($connector, $connectable);
     }
 
+    protected function findTrashed(Connectable $connector, Connectable $connectable): ?Connection
+    {
+        /** @var Connection|null $connection */
+        $connection = $this->query()
+            ->onlyTrashed()
+            ->where('connector_id', $connector->getKey())
+            ->where('connector_type', $connector->getMorphClass())
+            ->where('connectable_id', $connectable->getKey())
+            ->where('connectable_type', $connectable->getMorphClass())
+            ->first();
+
+        return $connection;
+    }
+
     protected function invalidateCache(Connectable $connector, Connectable $connectable): void
     {
         Cache::forget(Cache::keyFor($connector, $connectable));
