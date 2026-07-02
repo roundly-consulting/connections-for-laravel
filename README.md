@@ -469,6 +469,57 @@ $fake->assertConnectedTimes(1);
 > `RoundlyConsulting\Connections\Interfaces\Connectable` interface remain as
 > backward-compatible aliases. New code should use the `Models\` and `Contracts\` names.
 
+## Integrates with
+
+### enums-for-laravel (bundled)
+
+`Enums\ConnectionStatus` uses the shared `RoundlyConsulting\Enums\Helpers` trait, so alongside
+its domain guard `canTransitionTo()` it ships the standard enum helpers:
+
+```php
+use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+
+ConnectionStatus::values();          // ['pending', 'accepted', 'blocked']
+ConnectionStatus::labels();          // ['Pending', 'Accepted', 'Blocked']
+ConnectionStatus::toOptions();       // ['pending' => 'Pending', ...] for <select>
+ConnectionStatus::options();         // EnumOption DTOs for JS/Inertia selects
+ConnectionStatus::validationRule();  // 'in:pending,accepted,blocked'
+ConnectionStatus::Accepted->readable();       // 'Accepted'
+ConnectionStatus::tryFromLabel('Accepted');   // ConnectionStatus::Accepted
+```
+
+`enums-for-laravel` is a runtime dependency and is installed automatically.
+
+### reports-for-laravel (optional, host-wired)
+
+Connections deliberately does **not** depend on `reports-for-laravel` — the tier DAG keeps
+`connections` below its own consumers (`contacts`, `teams`), so it cannot require a higher-tier
+package. If you want a "report this connection" flow, wire it in your host app with no change to
+this package:
+
+```php
+// 1. Install reports in your app:  composer require roundly-consulting/reports-for-laravel
+// 2. Point connections at your own model:  config/connections.php => 'model' => \App\Models\Connection::class
+// 3. Make that model reportable:
+use RoundlyConsulting\Connections\Models\Connection as BaseConnection;
+use RoundlyConsulting\Reports\Contracts\Reportable;
+use RoundlyConsulting\Reports\Traits\HasReports;
+
+class Connection extends BaseConnection implements Reportable
+{
+    use HasReports;
+}
+
+// 4. Report / moderate through the reports facade:
+Reports::report($connection)->by($user)->for(Reason::Spam)->create();
+$connection->hasBeenReported();      // true
+$connection->isReportedBy($user);    // dedupe UX
+Connection::query()->mostReported(); // triage worst offenders
+```
+
+Multi-moderator sign-off is inherited from `reports → approvals`. Because the report wiring lives
+in your app, the connections runtime graph stays acyclic and dependency-free of reports.
+
 ## Testing
 
 ```bash
