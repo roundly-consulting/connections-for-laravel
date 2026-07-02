@@ -4,15 +4,24 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Enums;
 
+use RoundlyConsulting\Enums\Helpers;
+
 /**
  * The lifecycle state of a connection.
  *
  * A connection is created in one of these states (default per config) and may
  * move between them via the Accept/Block actions. Only an accepted, unexpired
  * connection is considered "active" for access checks.
+ *
+ * Ships the shared {@see Helpers} trait from enums-for-laravel, adding
+ * value/label/option helpers (`values()`, `labels()`, `options()`,
+ * `toOptions()`, `validationRule()`, `readable()`, case lookups) on top of the
+ * domain-specific transition guard below.
  */
 enum ConnectionStatus: string
 {
+    use Helpers;
+
     case Pending = 'pending';
     case Accepted = 'accepted';
     case Blocked = 'blocked';
