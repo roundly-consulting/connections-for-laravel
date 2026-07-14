@@ -37,7 +37,9 @@ Install the package via Composer:
 composer require roundly-consulting/connections-for-laravel
 ```
 
-Publish and run the migration:
+Publish and run the migration. The package **does not load its migration automatically** — it is
+copied into your `database/migrations` (timestamped) when you publish it, so your app owns it and
+`php artisan migrate` runs exactly what you published:
 
 ```bash
 php artisan vendor:publish --tag="connections-migrations"
@@ -489,6 +491,22 @@ ConnectionStatus::tryFromLabel('Accepted');   // ConnectionStatus::Accepted
 ```
 
 `enums-for-laravel` is a runtime dependency and is installed automatically.
+
+### package-toolkit-for-laravel (bundled)
+
+The service provider is built on the shared toolkit: config, the publish-only migration, and the
+console commands are declared fluently, `connections.model` is resolved and validated through the
+toolkit's model resolver, and the package reports itself in `php artisan about`:
+
+```bash
+php artisan about --only=connections
+```
+
+The section shows the model, table, default status, whether access checks enforce active links, the
+default expiry, how many permissions a new connection starts with (a count, never the ability
+names), and whether the gate, cache, and events are on.
+
+`package-toolkit-for-laravel` is a runtime dependency and is installed automatically.
 
 ### reports-for-laravel (optional, host-wired)
 
