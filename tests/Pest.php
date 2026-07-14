@@ -12,6 +12,7 @@ uses(TestCase::class)->in(
     'Commands',
     'ConfigTest.php',
     'ConnectionManagerTest.php',
+    'ConnectionsServiceProviderTest.php',
     'ConnectionTest.php',
     'DataTransferObjects',
     'Dx',
@@ -24,6 +25,7 @@ uses(TestCase::class)->in(
     'Permissions',
     'Scopes',
     'Status',
+    'Support',
     'Testing',
 );
 

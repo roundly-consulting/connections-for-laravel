@@ -15,8 +15,6 @@ abstract class TestCase extends Orchestra
     {
         parent::setUp();
 
-        $this->artisan('migrate', ['--database' => 'testing'])->run();
-
         Schema::create('users', function (Blueprint $table): void {
             $table->id();
         });
@@ -24,6 +22,15 @@ abstract class TestCase extends Orchestra
         Schema::create('teams', function (Blueprint $table): void {
             $table->id();
         });
+    }
+
+    /**
+     * Migrations are publish-only — the provider loads none — so the suite runs
+     * the package's own migrations explicitly.
+     */
+    protected function defineDatabaseMigrations(): void
+    {
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 
     /** @return array<int, class-string> */

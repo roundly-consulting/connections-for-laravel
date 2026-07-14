@@ -6,17 +6,47 @@ namespace RoundlyConsulting\Connections;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Connections\Commands\MakeConnectableCommand;
 use RoundlyConsulting\Connections\Commands\NotifyExpiringConnectionsCommand;
 use RoundlyConsulting\Connections\Commands\PruneConnectionsCommand;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\Connections\Support\ConnectionModel;
+use RoundlyConsulting\PackageToolkit\Package;
+use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
-final class ConnectionsServiceProvider extends ServiceProvider
+final class ConnectionsServiceProvider extends PackageServiceProvider
 {
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('connections')
+            ->hasConfigFile()
+            ->hasMigrations()
+            ->hasCommands([
+                PruneConnectionsCommand::class,
+                NotifyExpiringConnectionsCommand::class,
+                MakeConnectableCommand::class,
+            ])
+            ->contributesToAbout(static fn (): array => [
+                'Model' => class_basename(ConnectionModel::class()),
+                'Table' => ConnectionModel::table(),
+                'Default status' => self::defaultStatus(),
+                'Access checks' => config('connections.enforce_active_on_check', true) === false
+                    ? 'ADVISORY'
+                    : 'ENFORCED',
+                'Default expiry' => self::defaultExpiry(),
+                // Permissions are the host's own ability strings — report how many
+                // a new connection starts with, never which ones.
+                'Default permissions' => self::defaultPermissions(),
+                'Gate integration' => (bool) config('connections.register_gate', false) ? 'ON' : 'OFF',
+                'In-request cache' => (bool) config('connections.cache.enabled', true) ? 'ON' : 'OFF',
+                'Events' => (bool) config('connections.events.enabled', true) ? 'ON' : 'OFF',
+            ]);
+    }
+
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/connections.php', 'connections');
+        parent::register();
 
         $this->app->singleton(ConnectionManager::class);
         $this->app->alias(ConnectionManager::class, 'connections');
@@ -24,27 +54,16 @@ final class ConnectionsServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        parent::boot();
 
         $this->registerGate();
-
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                PruneConnectionsCommand::class,
-                NotifyExpiringConnectionsCommand::class,
-                MakeConnectableCommand::class,
-            ]);
-
-            $this->publishes([
-                __DIR__.'/../config/connections.php' => config_path('connections.php'),
-            ], 'connections-config');
-
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'connections-migrations');
-        }
     }
 
+    /**
+     * A global `Gate::before` hook that falls through to a connection's
+     * permissions for *any* ability checked against a Connectable — not an
+     * ability definition, so it stays hand-wired.
+     */
     private function registerGate(): void
     {
         if (! (bool) config('connections.register_gate', false)) {
@@ -64,5 +83,31 @@ final class ConnectionsServiceProvider extends ServiceProvider
 
             return $user->hasPermissionThroughConnection($connectable, $ability) ? true : null;
         });
+    }
+
+    private static function defaultStatus(): string
+    {
+        $status = config('connections.default_status');
+
+        return is_string($status) && $status !== '' ? $status : 'accepted';
+    }
+
+    private static function defaultExpiry(): string
+    {
+        $expiry = config('connections.expiry.default');
+
+        return match (true) {
+            is_int($expiry) => $expiry.'s',
+            is_string($expiry) && $expiry !== '' => $expiry,
+            default => 'NEVER',
+        };
+    }
+
+    private static function defaultPermissions(): string
+    {
+        $permissions = config('connections.default_permissions', []);
+        $count = is_array($permissions) ? count($permissions) : 0;
+
+        return $count === 0 ? 'NONE' : $count.' granted on connect';
     }
 }
