@@ -25,6 +25,7 @@ use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
+use RoundlyConsulting\Connections\Support\ConnectionModel;
 
 /**
  * Gives an Eloquent model the ability to form connections to other models,
@@ -411,15 +412,13 @@ trait HasConnections
         return $class;
     }
 
-    /** @return class-string<Connection> */
+    /**
+     * A host may override this to hard-wire the model instead of configuring it.
+     *
+     * @return class-string<Connection>
+     */
     protected function connectionModel(): string
     {
-        $model = config('connections.model', Connection::class);
-
-        if (is_string($model) && is_a($model, Connection::class, true)) {
-            return $model;
-        }
-
-        return Connection::class;
+        return ConnectionModel::class();
     }
 }

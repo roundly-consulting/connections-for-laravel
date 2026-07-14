@@ -9,19 +9,14 @@ use RoundlyConsulting\Connections\Cache;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 use RoundlyConsulting\Connections\Models\Connection;
+use RoundlyConsulting\Connections\Support\ConnectionModel;
 
 trait ResolvesConnections
 {
     /** @return class-string<Connection> */
     protected function connectionModel(): string
     {
-        $model = config('connections.model', Connection::class);
-
-        if (is_string($model) && is_a($model, Connection::class, true)) {
-            return $model;
-        }
-
-        return Connection::class;
+        return ConnectionModel::class();
     }
 
     /** @return Builder<Connection> */
