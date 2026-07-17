@@ -11,11 +11,14 @@ use RoundlyConsulting\Connections\Commands\NotifyExpiringConnectionsCommand;
 use RoundlyConsulting\Connections\Commands\PruneConnectionsCommand;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Support\ConnectionModel;
+use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
 final class ConnectionsServiceProvider extends PackageServiceProvider
 {
+    use RegistersBlueprintMacros;
+
     public function configurePackage(Package $package): void
     {
         $package
@@ -55,6 +58,11 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
     public function boot(): void
     {
         parent::boot();
+
+        // The connections migration keys its polymorphic columns through the toolkit's
+        // `morphKey` macro, so it must exist before the migration runs. Registration is
+        // idempotent — the toolkit guards it with `hasMacro()`.
+        $this->registerBlueprintMacros();
 
         $this->registerGate();
     }

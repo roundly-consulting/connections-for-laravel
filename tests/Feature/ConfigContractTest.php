@@ -15,7 +15,7 @@ declare(strict_types=1);
  *    is an access-control promise.
  */
 it('ships exactly the config keys it reads', function (): void {
-    expect(__DIR__.'/../../config/connections.php')->toSatisfyConfigContract(__DIR__.'/../../src', [
+    expect(__DIR__.'/../../config/connections.php')->toSatisfyConfigContract([__DIR__.'/../../src', __DIR__.'/../../database'], [
         // `connections.model` is read through the toolkit's `ModelResolver::for()` seam in
         // ConnectionModel rather than a `config()` call. It is a real read — it drives the
         // whole model swap — but it is not a `config(` token, so the prefix is what makes

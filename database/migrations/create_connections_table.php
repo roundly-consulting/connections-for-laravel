@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 
 return new class extends Migration
 {
@@ -13,10 +14,12 @@ return new class extends Migration
         $table = config('connections.table');
         $table = is_string($table) ? $table : 'connections';
 
-        Schema::create($table, function (Blueprint $table): void {
+        $keyType = KeyType::fromConfig('connections.key_type');
+
+        Schema::create($table, function (Blueprint $table) use ($keyType): void {
             $table->id();
-            $table->morphs('connector');
-            $table->morphs('connectable');
+            $table->morphKey('connector', $keyType, nullable: false);
+            $table->morphKey('connectable', $keyType, nullable: false);
             // jsonb, not json. On Postgres `json` is stored as text and has no equality
             // operator, so `where permissions = ?` fails outright ("operator does not
             // exist: json = unknown") — which makes assertDatabaseHas() on these columns
