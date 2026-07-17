@@ -25,10 +25,11 @@ it('publishes the config file', function (): void {
     ]);
 });
 
-it('publishes its migration timestamp-injected into the host', function (): void {
+// Kept for its unique half only: `toPublishMigrationsTimestamped` (tests/MigrationOrderTest.php)
+// pins the count and that every destination is a timestamped migration path, but its regex
+// accepts any file name. This pins *which* source file is published, which nothing else does.
+it('publishes the connections migration under its own name', function (): void {
     $paths = ServiceProvider::pathsToPublish(ConnectionsServiceProvider::class, 'connections-migrations');
-
-    expect($paths)->toHaveCount(1);
 
     $source = (string) array_key_first($paths);
     $target = (string) reset($paths);
@@ -38,14 +39,9 @@ it('publishes its migration timestamp-injected into the host', function (): void
         ->and(basename($target))->toMatch('/^\d{4}_\d{2}_\d{2}_\d{6}_create_connections_table\.php$/');
 });
 
-it('never auto-loads its migrations — the host must publish them', function (): void {
-    $registered = array_map(
-        static fn (string $path): string => realpath($path) ?: $path,
-        app('migrator')->paths(),
-    );
-
-    expect($registered)->not->toContain(realpath(__DIR__.'/../database/migrations'));
-});
+// 'never auto-loads its migrations' is deleted: it hand-rolled the migrator-paths check that
+// `toNotAutoLoadMigrations` now performs in tests/MigrationOrderTest.php. Both went red together
+// when the provider was made to really loadMigrationsFrom(), so this was a pure duplicate.
 
 it('binds the connection manager as a shared singleton', function (): void {
     expect(app(ConnectionManager::class))->toBe(app('connections'))

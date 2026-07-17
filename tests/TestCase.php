@@ -4,50 +4,35 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Tests;
 
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-use Orchestra\Testbench\TestCase as Orchestra;
+use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Connections\ConnectionsServiceProvider;
+use RoundlyConsulting\Testing\PackageTestCase;
 
-abstract class TestCase extends Orchestra
+abstract class TestCase extends PackageTestCase
 {
-    protected function setUp(): void
+    /**
+     * Every provider connections needs. `enums-for-laravel` is a hard `require` but ships
+     * no provider (it is a helpers-only package), so the list is genuinely one entry —
+     * not an omission.
+     *
+     * @return list<class-string<ServiceProvider>>
+     */
+    protected function packageProviders(): array
     {
-        parent::setUp();
-
-        Schema::create('users', function (Blueprint $table): void {
-            $table->id();
-        });
-
-        Schema::create('teams', function (Blueprint $table): void {
-            $table->id();
-        });
+        return [ConnectionsServiceProvider::class];
     }
 
     /**
-     * Migrations are publish-only — the provider loads none — so the suite runs
-     * the package's own migrations explicitly.
+     * The connections migration, named by provider class (never by filename), plus the
+     * host-owned fixture tables the connectors and connectables live in.
+     *
+     * @return list<class-string<ServiceProvider>|string>
      */
-    protected function defineDatabaseMigrations(): void
-    {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-    }
-
-    /** @return array<int, class-string> */
-    protected function getPackageProviders($app): array
+    protected function migrationSources(): array
     {
         return [
             ConnectionsServiceProvider::class,
+            __DIR__.'/database/migrations',
         ];
-    }
-
-    protected function defineEnvironment($app): void
-    {
-        $app['config']->set('database.default', 'testing');
-        $app['config']->set('database.connections.testing', [
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'prefix' => '',
-        ]);
     }
 }
