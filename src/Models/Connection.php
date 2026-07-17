@@ -64,10 +64,21 @@ class Connection extends Model
         ];
     }
 
-    /** @return Builder<Connection> */
+    /**
+     * The MassPrunable hook Laravel's `model:prune` calls (the package's own
+     * `connections:prune` goes through PruneConnections, which resolves the seam).
+     *
+     * `$this->newQuery()` rather than `self::query()`: inside an instance method the two
+     * are equivalent — `self::` is a forwarding call, so late static binding still
+     * resolves to `$this`'s class and a host's swapped model was already honoured — but
+     * `newQuery()` says that plainly instead of routing it through a static call that
+     * reads like the seam bypass it is not.
+     *
+     * @return Builder<Connection>
+     */
     public function prunable(): Builder
     {
-        return self::query()->where('expires_at', '<=', now());
+        return $this->newQuery()->where('expires_at', '<=', now());
     }
 
     /** @return MorphTo<Model, $this> */
