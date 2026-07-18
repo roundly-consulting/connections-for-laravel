@@ -34,13 +34,12 @@ ArchPresets::strictTypes('RoundlyConsulting\Connections');
  * `final` on any of them is a fatal error, not a tightening. Both of the last two were
  * invisible to the rules this replaces — which is the argument for the wider scope.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Connections')
-    ->ignoring([
-        Connection::class,
-        ConnectionsException::class,
-        PendingConnection::class,
-        ConnectionManager::class,
-    ]);
+ArchPresets::finalByDefault('RoundlyConsulting\Connections', [
+    Connection::class,
+    ConnectionsException::class,
+    PendingConnection::class,
+    ConnectionManager::class,
+]);
 
 /**
  * The counter-weight, and the fleet's 7×-shipped fatal: `final` on a config-swappable
