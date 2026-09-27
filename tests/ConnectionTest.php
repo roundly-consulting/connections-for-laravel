@@ -47,7 +47,3 @@ test('it builds from its factory with sane defaults', function () {
         ->permissions->toBeEmpty()
         ->expires_at->toBeNull();
 });
-
-test('the legacy Connection class remains an alias of the Models class', function () {
-    expect(is_a(RoundlyConsulting\Connections\Connection::class, Connection::class, true))->toBeTrue();
-});

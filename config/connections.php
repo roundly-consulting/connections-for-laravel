@@ -128,7 +128,8 @@ return [
     | When true, access checks (hasPermissionThroughConnection / can) and
     | isConnectedTo only count connections that are active — accepted and not
     | expired. Pending, blocked, and expired links therefore grant nothing.
-    | Set to false to treat expiry/status as advisory (the pre-v1.1 behaviour).
+    | Set to false to treat status and expiry as advisory: any stored
+    | connection counts.
     |
     */
 

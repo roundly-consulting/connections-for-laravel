@@ -29,10 +29,10 @@ one readable line each. Connections can also model **invitation flows** (pending
 blocked), carry free-form **metadata**, be operated on in **bulk**, and matched with
 **wildcard permissions** and **query scopes**.
 
-> **Behaviour change in 1.1:** access checks now require a connection to be **active**
-> (accepted and not expired) by default (`connections.enforce_active_on_check`). An expired or
-> non-accepted connection no longer grants permission. Set the flag to `false` to restore the
-> pre-1.1 "expiry is advisory" behaviour.
+> **Access checks require an active connection** — accepted and not expired — by default
+> (`connections.enforce_active_on_check`). An expired or non-accepted connection grants no
+> permission. Set the flag to `false` to treat status and expiry as advisory, so any stored
+> connection counts.
 
 ## Requirements
 
@@ -116,7 +116,7 @@ return [
 | `register_gate`           | `bool`          | `false`             | `CONNECTIONS_REGISTER_GATE`        | Fall a host `Gate` check through to connection permissions. |
 | `default_permissions`     | `list<string>`  | `[]`                | —                                  | Permissions applied when a connection is created with none. An explicit empty set stays empty. |
 | `default_status`          | `string`        | `accepted`          | `CONNECTIONS_DEFAULT_STATUS`       | Status new connections start in (`pending`/`accepted`/`blocked`). |
-| `enforce_active_on_check` | `bool`          | `true`              | `CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK` | Require accepted + not-expired for access checks. `false` = pre-1.1 behaviour. |
+| `enforce_active_on_check` | `bool`          | `true`              | `CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK` | Require accepted + not-expired for access checks. `false` = status and expiry are advisory; any stored connection counts. |
 | `expiry.default`          | `string\|int\|null` | `null`          | `CONNECTIONS_EXPIRY_DEFAULT`       | Default expiry applied when none is given. |
 
 ## Usage
@@ -347,8 +347,8 @@ $team->connectorsOfType(User::class);     // Collection<User>
 ### Actions
 
 Each operation is also a standalone action you can resolve from the container and unit test.
-`CreateConnection::execute()` keeps its original positional signature for backward
-compatibility.
+`CreateConnection::execute()` takes the two models plus optional permissions, expiry, status
+and meta; `executeData()` takes the same input as a `ConnectionData` DTO.
 
 ```php
 use RoundlyConsulting\Connections\Actions\CreateConnection;
@@ -476,10 +476,6 @@ $fake->assertConnectedTimes(1);
 | Contract  | `RoundlyConsulting\Connections\Contracts\Connectable`                     |
 | Testing   | `Testing\ConnectionFake`                                                  |
 | Factory   | `RoundlyConsulting\Connections\Database\Factories\ConnectionFactory`      |
-
-> The legacy `RoundlyConsulting\Connections\Connection` model class and
-> `RoundlyConsulting\Connections\Interfaces\Connectable` interface remain as
-> backward-compatible aliases. New code should use the `Models\` and `Contracts\` names.
 
 ## Integrates with
 
