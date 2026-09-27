@@ -74,7 +74,7 @@ class Connection extends Model
      * `newQuery()` says that plainly instead of routing it through a static call that
      * reads like the seam bypass it is not.
      *
-     * @return Builder<Connection>
+     * @return Builder<static>
      */
     public function prunable(): Builder
     {
