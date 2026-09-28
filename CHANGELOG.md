@@ -69,3 +69,5 @@ Initial public release.
 - `connectablesOfType()` / `connectorsOfType()` and `connectionsWithPermission()` count only
   active connections while `enforce_active_on_check` is on; the `withPermission` scope honours
   `*` and trailing segment wildcards.
+- Boolean config flags accept env strings (`on`/`off`, `yes`/`no`, `1`/`0`) and
+  `CONNECTIONS_EXPIRY_DEFAULT` accepts a numeric string of seconds.

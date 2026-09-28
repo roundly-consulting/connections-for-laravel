@@ -126,6 +126,11 @@ return [
 | `enforce_active_on_check` | `bool`          | `true`              | `CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK` | Require accepted + not-expired for access checks. `false` = status and expiry are advisory; any stored connection counts. |
 | `expiry.default`          | `string\|int\|null` | `null`          | `CONNECTIONS_EXPIRY_DEFAULT`       | Default expiry applied when none is given. |
 
+Boolean keys read env strings the usual way: `true`/`1`/`on`/`yes` switch a flag on,
+`false`/`0`/`off`/`no` switch it off. `expiry.default` takes a relative string (`"30 days"`) or
+seconds — an integer, or a numeric env string such as `CONNECTIONS_EXPIRY_DEFAULT=3600`. It applies
+to new connections only.
+
 ## Usage
 
 ### Make a model connectable
