@@ -15,8 +15,12 @@ Initial public release.
 - A fluent `Connections` facade —
   `Connections::between($user, $team)->withPermissions(...)->connect()` — plus trait verbs such as
   `connectTo()`, `grantThroughConnection()` and `disconnectFrom()`.
-- Permission checks with `can()`, `hasAnyPermission()` / `hasAllPermissions()` and wildcard
-  matching (`*`, `posts.*`); access requires an active connection by default.
+- A `permissions()` sub-accessor on every pair —
+  `Connections::between($a, $b)->permissions()->grant()/revoke()/sync()/clear()/all()/has()/hasAny()/hasAll()` —
+  with wildcard matching (`*`, `posts.*`); access requires an active connection by default.
+- `Connections::between($a, $b)->find()` (the pair's connection in any status),
+  `Connections::from($user)->sync([...])` (reconcile to an exact set),
+  `Connections::expiring($days)` (every connection expiring soon) and `Connections::flushCache()`.
 - Invitation flows: `invite()` creates a pending connection that the other side accepts or
   blocks (`acceptConnectionFrom()`, `blockConnectionFrom()`), tracked by `ConnectionStatus`.
 - Free-form JSON metadata on each connection (`withMeta()`, `meta('dot.key')`).
@@ -30,5 +34,21 @@ Initial public release.
   `$user->can('publish', $team)` authorizes through connections.
 - Artisan commands: `connections:prune`, `connections:notify-expiring` and the
   `make:connectable` model generator.
-- `Connections::fake()` with assertions such as `assertConnected()` and
-  `assertHasPermissionThrough()` for your tests.
+- `Connections::fake()` — a recording fake that also captures injected-manager, sub-accessor and
+  `HasConnections` trait calls, with an `assert*` / `assertNothing*` pair for every write
+  (`assertConnected()`, `assertDisconnected()`, `assertGranted()`, `assertRevoked()`,
+  `assertPermissionsSynced()`, `assertSynced()`, `assertExtended()`, `assertReconnected()`,
+  `assertPruned()`, …).
+
+### Changed
+
+- The `Connections` facade resolves `ConnectionManager::class`; the `'connections'` container
+  alias is gone — inject or `app(ConnectionManager::class)`.
+- Pair permission verbs moved under `permissions()`: `between()->grant/revoke/sync/clearPermissions/can`
+  became `between()->permissions()->grant/revoke/sync/clear/has`. `between()->sync()` now means
+  "reconcile connections" (the old `syncConnections()` use case); the staged-permission fallback of
+  the old `grant()` is gone — pass the permissions.
+- `syncConnections()` / `from()->sync()` take `Connectable` or `SyncTarget` items only; the
+  `['model' => …, 'permissions' => …]` array form is removed (pass a `SyncTarget`).
+- `HasConnections` writes delegate to `ConnectionManager` instead of calling actions, so the fake
+  and host overrides see them. `Cache` is `@internal` — use `Connections::flushCache()`.

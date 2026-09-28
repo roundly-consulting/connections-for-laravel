@@ -146,11 +146,21 @@ class Team extends Model implements Connectable
 A model can be both a **connector** (the side that initiates a connection) and a
 **connectable** (the side a connection points to).
 
-### The `Connections` facade (fluent builder)
+### The `Connections` facade
 
-The `Connections` facade is the most expressive way to work with connections:
+The `Connections` facade is the package's public API. Every operation is reachable from it:
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `Connections::between($connector, $connectable)` | `PendingConnection` | Fluent builder for one pair |
+| `Connections::from($connector)` | `PendingConnection` | Builder with the connectable set later (`to()`, `toMany()`) or a `sync()` reconcile |
+| `Connections::expiring(int $days = 7)` | `Builder<Connection>` | Every live connection expiring within the window |
+| `Connections::prune()` | `int` | Soft-delete expired connections, returning the count |
+| `Connections::flushCache()` | `void` | Drop the in-request permission cache |
+| `Connections::fake()` | `ConnectionFake` | Recording fake for tests (see **Testing helper**) |
 
 ```php
+use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Facades\Connections;
 
 // Create or update a connection (idempotent), with permissions and an expiry.
@@ -162,32 +172,81 @@ Connections::between($user, $team)
 // Defer the connectable until later with from()->to().
 Connections::from($user)->to($team)->withPermissions('view')->connect();
 
-// Permission lifecycle (grant/sync auto-create the connection if absent).
-Connections::between($user, $team)->grant('publish');
-Connections::between($user, $team)->revoke('publish');
-Connections::between($user, $team)->sync('view', 'edit');   // exact set
-
 // Move the expiry, or clear it with null.
 Connections::between($user, $team)->extend(now()->addYear());
 Connections::between($user, $team)->extend(null);
 
-// Checks.
-Connections::between($user, $team)->exists();      // bool
-Connections::between($user, $team)->can('edit');   // bool
+// Look the pair up.
+Connections::between($user, $team)->exists();   // bool — an active connection exists
+Connections::between($user, $team)->find();     // ?Connection — in any status
 
 // Remove the connection (soft delete).
 Connections::between($user, $team)->disconnect();
 
+// Reconcile a connector to exactly this set (connect missing, disconnect extras).
+Connections::from($user)->sync([$teamA, new SyncTarget($teamB, permissions: ['read'])]); // SyncResult
+
+// Connections expiring within 14 days, across every connector.
+Connections::expiring(14)->with('connector')->get();
+
 // Remove all expired connections, returning how many were removed.
 $removed = Connections::prune();
+
+// Drop the in-request permission cache (e.g. between jobs in a long-running worker).
+Connections::flushCache();
 ```
 
-The cache is invalidated automatically on every write, so a check after a write reflects the
-change without any `force` flag.
+### Permissions on a pair — `permissions()`
+
+`between()->permissions()` is the permission set of one connection:
+
+```php
+$permissions = Connections::between($user, $team)->permissions();
+
+$permissions->grant('publish');          // Connection — creates the connection if absent
+$permissions->revoke('publish');         // Connection — throws ConnectionNotFound if absent
+$permissions->sync('view', 'edit');      // Connection — exact set, creates if absent
+$permissions->clear();                   // Connection — remove every permission
+
+$permissions->all();                     // Collection<int, string> — what is stored
+$permissions->has('edit');               // bool
+$permissions->hasAny('view', 'edit');    // bool
+$permissions->hasAll('view', 'edit');    // bool
+```
+
+`has()`, `hasAny()` and `hasAll()` honour wildcards and, while `enforce_active_on_check` is on,
+only count an active connection. The cache is invalidated automatically on every write, so a
+check after a write reflects the change without any `force` flag.
+
+### Without the facade
+
+The facade is sugar over `RoundlyConsulting\Connections\ConnectionManager`, a container
+singleton. Inject it for the same API, or call an action directly for the raw use case — all
+three run the same code:
+
+```php
+use RoundlyConsulting\Connections\Actions\GrantPermissions;
+use RoundlyConsulting\Connections\ConnectionManager;
+
+final class ShareTeam
+{
+    public function __construct(private ConnectionManager $connections) {}
+
+    public function __invoke(User $user, Team $team): void
+    {
+        $this->connections->between($user, $team)->permissions()->grant('view');
+    }
+}
+
+// The raw action.
+app(GrantPermissions::class)->execute($user, $team, 'view');
+```
 
 ### Trait verbs
 
-If you prefer model methods, `HasConnections` exposes the same lifecycle:
+If you prefer model methods, `HasConnections` exposes the same lifecycle. Every write goes
+through the `ConnectionManager`, so host overrides and `Connections::fake()` see trait calls
+too:
 
 ```php
 $user->connectTo($team, ['view', 'edit'], now()->addMonth()); // Connection
@@ -195,7 +254,9 @@ $user->disconnectFrom($team);                                  // void
 $user->grantThroughConnection($team, 'publish');               // Connection
 $user->revokeThroughConnection($team, 'publish');              // Connection
 $user->syncConnectionPermissions($team, ['view']);             // Connection
+$user->clearConnectionPermissions($team);                      // Connection
 $user->permissionsThroughConnection($team);                    // Collection<int, string>
+$user->syncConnections([$teamA, $teamB]);                      // SyncResult
 ```
 
 ### Invitations (pending → accepted / blocked)
@@ -258,16 +319,16 @@ Connections::from($user)->toMany($teams)->grantAll('publish');
 Connections::from($user)->toMany($teams)->revokeAll('publish');
 
 // Reconcile to exactly this set: connect missing, disconnect extras, update overlap.
-$result = $user->syncConnections([$teamA, $teamC]);
+$result = Connections::from($user)->sync([$teamA, $teamC]);   // or $user->syncConnections([...])
 $result->attached;  // list of newly connected ids
 $result->detached;  // list of disconnected ids
 $result->updated;   // list of ids that already existed
 
-// Per-target attributes via a map or SyncTarget DTOs.
+// Per-target permissions, expiry or meta through SyncTarget DTOs.
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 
-$user->syncConnections([
-    ['model' => $teamA, 'permissions' => ['view', 'edit']],
+Connections::from($user)->sync([
+    new SyncTarget($teamA, permissions: ['view', 'edit']),
     new SyncTarget($teamB, ['publish'], now()->addDays(30)),
 ]);
 ```
@@ -310,8 +371,11 @@ $connection->hasPermission('edit');             // bool on a Connection
 $connection->hasAnyPermission('view', 'edit');  // bool
 $connection->hasAllPermissions('view', 'edit'); // bool
 
+// The same checks through the facade.
+Connections::between($user, $team)->permissions()->has('edit');
+
 // Clear every permission on a connection.
-Connections::between($user, $team)->clearPermissions();
+Connections::between($user, $team)->permissions()->clear();
 $user->clearConnectionPermissions($team);
 ```
 
@@ -340,6 +404,9 @@ $user->connectionsWithPermission('publish');
 $user->connections()->active()->get();
 $user->connections()->expiringSoon(14)->get();
 
+// Across every connector.
+Connections::expiring(14)->get();
+
 // Fetch the connected models of a given type (FQCN or morph alias), not the Connection rows.
 $user->connectablesOfType(Team::class);   // Collection<Team>
 $team->connectorsOfType(User::class);     // Collection<User>
@@ -359,6 +426,8 @@ use RoundlyConsulting\Connections\Actions\SyncPermissions;
 use RoundlyConsulting\Connections\Actions\ExtendConnection;
 use RoundlyConsulting\Connections\Actions\DisconnectConnection;
 use RoundlyConsulting\Connections\Actions\PruneConnections;
+use RoundlyConsulting\Connections\Actions\SyncConnections;
+use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 
 app(CreateConnection::class)->execute($user, $team, collect(['view']), now()->addMonth());
 app(GrantPermissions::class)->execute($user, $team, 'publish');
@@ -367,6 +436,7 @@ app(SyncPermissions::class)->execute($user, $team, 'view', 'edit');
 app(ExtendConnection::class)->execute($user, $team, now()->addYear());
 app(DisconnectConnection::class)->execute($user, $team);
 app(PruneConnections::class)->execute();
+app(SyncConnections::class)->execute($user, [new SyncTarget($team)]);
 ```
 
 `grant` and `sync` auto-create the connection when none exists. `disconnect`, `revoke`, and
@@ -423,7 +493,8 @@ php artisan model:prune --model="RoundlyConsulting\Connections\Models\Connection
 ### Notifying about expiring connections
 
 Schedule the opt-in command and listen for `ConnectionExpiring` to notify before a connection
-lapses (no new table — it leans entirely on the event):
+lapses (no new table — it leans entirely on the event). It dispatches one event per row of
+`Connections::expiring($days)`:
 
 ```bash
 php artisan connections:notify-expiring --days=7
@@ -440,32 +511,50 @@ php artisan make:connectable User --existing      # prints the two lines to add 
 
 ### Testing helper
 
-`Connections::fake()` swaps the manager for a recording fake — operations still hit your test
-database (so reads work), but calls are captured for assertions, in the spirit of
-`Bus::fake()`:
+`Connections::fake()` swaps the manager for a recording fake — in the facade **and** in the
+container, so injected `ConnectionManager`s, the `permissions()` sub-accessor and every
+`HasConnections` trait write are recorded too. Operations still hit your test database (so
+reads work) and are recorded once they succeed, in the spirit of `Bus::fake()`:
 
 ```php
 use RoundlyConsulting\Connections\Facades\Connections;
 
 $fake = Connections::fake();
 
-Connections::between($user, $team)->withPermissions('publish')->connect();
+$user->connectTo($team, ['publish']);            // trait call — recorded
 
 $fake->assertConnected($user, $team);
 $fake->assertHasPermissionThrough($user, $team, 'publish');
-$fake->assertInvited($user, $team);
-$fake->assertAccepted($user, $team);
-$fake->assertBlocked($user, $team);
 $fake->assertConnectedTimes(1);
 ```
+
+| Operation | Assert | Negative |
+|---|---|---|
+| `connect()` / `connectTo()` / `connectAll()` (per target) | `assertConnected($a, $b)`, `assertConnectedTimes($n)` | `assertNotConnected($a, $b)`, `assertNothingConnected()` |
+| `invite()` / `inviteConnection()` | `assertInvited($a, $b)` | `assertNothingInvited()` |
+| `accept()` / `acceptConnectionFrom()` | `assertAccepted($a, $b)` | `assertNothingAccepted()` |
+| `block()` / `blockConnectionFrom()` | `assertBlocked($a, $b)` | `assertNothingBlocked()` |
+| `disconnect()` / `disconnectFrom()` / `disconnectAll()` | `assertDisconnected($a, $b)` | `assertNothingDisconnected()` |
+| `reconnect()` / `restore()` / `reconnectTo()` | `assertReconnected($a, $b)` | `assertNothingReconnected()` |
+| `extend()` | `assertExtended($a, $b)` | `assertNothingExtended()` |
+| `permissions()->grant()` / `grantAll()` / `grantThroughConnection()` | `assertGranted($a, $b, ?$permission)` | `assertNothingGranted()` |
+| `permissions()->revoke()` / `revokeAll()` / `revokeThroughConnection()` | `assertRevoked($a, $b, ?$permission)` | `assertNothingRevoked()` |
+| `permissions()->sync()` / `->clear()` / `syncConnectionPermissions()` | `assertPermissionsSynced($a, $b, ?$set)`, `assertPermissionsCleared($a, $b)` | `assertNothingPermissionsSynced()` |
+| `from()->sync()` / `syncConnections()` | `assertSynced($connector, ?$set)` | `assertNothingSynced()` |
+| `prune()` / `connections:prune` | `assertPruned()` | `assertNothingPruned()` |
+| anything | `assertHasPermissionThrough($a, $b, $permission)` | `assertNothingRecorded()` |
+
+`toggle()` records the `connect` or `disconnect` it performs; `$fake->recorded()` returns the raw
+`RecordedOperation` list.
 
 ## Public API
 
 | Type      | Class / member                                                            |
 |-----------|---------------------------------------------------------------------------|
 | Facade    | `RoundlyConsulting\Connections\Facades\Connections` (`::fake()` for tests) |
-| Manager   | `RoundlyConsulting\Connections\ConnectionManager`                         |
+| Manager   | `RoundlyConsulting\Connections\ConnectionManager` (injectable facade root) |
 | Builder   | `RoundlyConsulting\Connections\PendingConnection`                         |
+| Sub-accessor | `RoundlyConsulting\Connections\ConnectionPermissions` (`between()->permissions()`) |
 | Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ExtendConnection`, `PruneConnections`, `AcceptConnection`, `BlockConnection`, `RestoreConnection`, `BulkConnect`, `BulkDisconnect`, `SyncConnections` |
 | DTOs      | `DataTransferObjects\ConnectionData`, `PermissionSet`, `SyncResult`, `SyncTarget` |
 | Enum      | `Enums\ConnectionStatus` (`Pending`/`Accepted`/`Blocked`)                 |
@@ -475,7 +564,7 @@ $fake->assertConnectedTimes(1);
 | Model     | `RoundlyConsulting\Connections\Models\Connection`                         |
 | Trait     | `RoundlyConsulting\Connections\Concerns\HasConnections`                   |
 | Contract  | `RoundlyConsulting\Connections\Contracts\Connectable`                     |
-| Testing   | `Testing\ConnectionFake`                                                  |
+| Testing   | `Testing\ConnectionFake`, `Testing\RecordedOperation`                     |
 | Factory   | `RoundlyConsulting\Connections\Database\Factories\ConnectionFactory`      |
 
 ## Integrates with
