@@ -10,8 +10,8 @@ use RoundlyConsulting\Enums\Helpers;
  * The lifecycle state of a connection.
  *
  * A connection is created in one of these states (default per config) and may
- * move between them via the Accept/Block actions. Only an accepted, unexpired
- * connection is considered "active" for access checks.
+ * move between them via the Accept/Block actions (see canTransitionTo()). Only
+ * an accepted, unexpired connection is considered "active" for access checks.
  *
  * Ships the shared {@see Helpers} trait from enums-for-laravel, adding
  * value/label/option helpers (`values()`, `labels()`, `options()`,
@@ -29,9 +29,11 @@ enum ConnectionStatus: string
     /**
      * Whether a transition from this state to the target is permitted.
      *
-     * The guard is intentionally lenient: accepting is allowed from pending or
-     * blocked (re-accepting a blocked link un-blocks it), blocking is allowed
-     * from any state, and a transition to the current state is always a no-op.
+     * Accepting is allowed from pending or blocked (accept() on a blocked link
+     * is the explicit unblock), blocking is allowed from any state, nothing
+     * moves back to pending, and a transition to the current state is always a
+     * no-op. Every action enforces it; the connect-side verbs (connect, invite,
+     * toggle, sync) are stricter still and never lift a block.
      */
     public function canTransitionTo(self $target): bool
     {

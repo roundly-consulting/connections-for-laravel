@@ -24,6 +24,7 @@ use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+use RoundlyConsulting\Connections\Exceptions\InvalidStatusTransition;
 use RoundlyConsulting\Connections\Exceptions\MissingConnectable;
 use RoundlyConsulting\Connections\Models\Connection;
 
@@ -89,6 +90,11 @@ class PendingConnection
         return $this;
     }
 
+    /**
+     * Stage an expiry. Null stages none (a new connection then takes the
+     * configured default, an existing one keeps its own) — clear an expiry
+     * with extend(null).
+     */
     public function expiringAt(?CarbonInterface $expiresAt): self
     {
         $this->expiresAt = $expiresAt;
@@ -140,6 +146,15 @@ class PendingConnection
         return $this;
     }
 
+    /**
+     * Create the connection, or update the pair's existing one. On an existing
+     * connection only what was staged changes: its status, permissions and
+     * expiry are kept unless restated, and a block is never lifted (only
+     * accept() may). After a disconnect or prune the pair is revived as a fresh
+     * connection — still blocked if it was blocked.
+     *
+     * @throws InvalidStatusTransition
+     */
     public function connect(): Connection
     {
         return $this->container->make(CreateConnection::class)->execute(
@@ -154,7 +169,10 @@ class PendingConnection
     }
 
     /**
-     * Sugar for asPending()->connect().
+     * Sugar for asPending()->connect(). Re-inviting a pending connection is
+     * fine; inviting over an accepted or blocked one throws.
+     *
+     * @throws InvalidStatusTransition
      */
     public function invite(): Connection
     {
@@ -178,7 +196,9 @@ class PendingConnection
 
     /**
      * Disconnect an active connection if one exists (returning null), otherwise
-     * connect (returning the new Connection).
+     * connect (returning the Connection). Connecting over a stored but inactive
+     * row (pending, blocked, expired) keeps its status and expiry — a toggle
+     * never lifts a block or renews an expiry.
      */
     public function toggle(): ?Connection
     {

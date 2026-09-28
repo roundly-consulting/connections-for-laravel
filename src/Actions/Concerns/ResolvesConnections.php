@@ -58,6 +58,25 @@ trait ResolvesConnections
         return $connection;
     }
 
+    /**
+     * The pair's single row — live or soft-deleted, since a trashed row still
+     * holds the unique morph index — locked for the rest of the transaction.
+     */
+    protected function findAnyForUpdate(Connectable $connector, Connectable $connectable): ?Connection
+    {
+        /** @var Connection|null $connection */
+        $connection = $this->query()
+            ->withTrashed()
+            ->where('connector_id', $connector->getKey())
+            ->where('connector_type', $connector->getMorphClass())
+            ->where('connectable_id', $connectable->getKey())
+            ->where('connectable_type', $connectable->getMorphClass())
+            ->lockForUpdate()
+            ->first();
+
+        return $connection;
+    }
+
     protected function invalidateCache(Connectable $connector, Connectable $connectable): void
     {
         Cache::forget(Cache::keyFor($connector, $connectable));

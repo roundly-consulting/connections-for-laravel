@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Connections\Actions;
 
 use RoundlyConsulting\Connections\Actions\Concerns\DispatchesConnectionEvents;
+use RoundlyConsulting\Connections\Actions\Concerns\GuardsStatusTransitions;
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Events\ConnectionBlocked;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
+use RoundlyConsulting\Connections\Exceptions\InvalidStatusTransition;
 use RoundlyConsulting\Connections\Models\Connection;
 
 final readonly class BlockConnection
 {
     use DispatchesConnectionEvents;
+    use GuardsStatusTransitions;
     use ResolvesConnections;
 
     /**
@@ -22,6 +25,7 @@ final readonly class BlockConnection
      * connection is already blocked.
      *
      * @throws ConnectionNotFound
+     * @throws InvalidStatusTransition
      */
     public function execute(Connectable $connector, Connectable $connectable): Connection
     {
@@ -30,6 +34,8 @@ final readonly class BlockConnection
         if ($connection->isBlocked()) {
             return $connection;
         }
+
+        $this->guardTransition($connection->status, ConnectionStatus::Blocked);
 
         $connection->update(['status' => ConnectionStatus::Blocked]);
 
