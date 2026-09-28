@@ -250,15 +250,7 @@ class PendingConnection
      */
     public function find(): ?Connection
     {
-        $connectable = $this->resolveConnectable();
-
-        /** @var Connection|null $connection */
-        $connection = $this->connector->connections()
-            ->where('connectable_id', $connectable->getKey())
-            ->where('connectable_type', $connectable->getMorphClass())
-            ->first();
-
-        return $connection;
+        return $this->storedConnection($this->resolveConnectable());
     }
 
     /**
@@ -334,7 +326,10 @@ class PendingConnection
     }
 
     /**
-     * Revoke the given permissions on every staged connectable that exists.
+     * Revoke the given permissions on every staged connectable that has a
+     * connection in any status — pending, blocked and expired included, so a
+     * revoked permission cannot come back on accept() or extend(). Pairs with
+     * no connection (or only a soft-deleted one) are skipped.
      *
      * @return Collection<int, Connection>
      */
@@ -345,7 +340,7 @@ class PendingConnection
         $results = new Collection;
 
         foreach ($this->resolveConnectables() as $connectable) {
-            if (! $this->connector->isConnectedTo($connectable)) {
+            if ($this->storedConnection($connectable) === null) {
                 continue;
             }
 
@@ -353,6 +348,20 @@ class PendingConnection
         }
 
         return $results;
+    }
+
+    /**
+     * The connector's live connection to the connectable in any status.
+     */
+    private function storedConnection(Connectable $connectable): ?Connection
+    {
+        /** @var Connection|null $connection */
+        $connection = $this->connector->connections()
+            ->where('connectable_id', $connectable->getKey())
+            ->where('connectable_type', $connectable->getMorphClass())
+            ->first();
+
+        return $connection;
     }
 
     /**
