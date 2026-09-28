@@ -77,19 +77,15 @@ trait HasConnections
 
     public function hasPermissionThroughConnection(Connectable $connectable, string $permission, bool $force = false): bool
     {
-        $key = $this->connectionCacheKey($connectable);
-
-        if (! Cache::enabled() || $force || ! Cache::has($key)) {
-            $connection = $this->connectionQuery($connectable)->first();
-
-            if (! Cache::enabled()) {
-                return $this->grantsPermission($connection, $permission);
-            }
-
-            Cache::put($key, $connection);
+        if (! Cache::enabled()) {
+            return $this->grantsPermission($this->connectionQuery($connectable)->first(), $permission);
         }
 
-        $connection = Cache::get($key);
+        $key = $this->connectionCacheKey($connectable);
+
+        $connection = $force || ! Cache::has($key)
+            ? Cache::put($key, $this->connectionQuery($connectable)->first())
+            : Cache::get($key);
 
         return $this->grantsPermission($connection instanceof Connection ? $connection : null, $permission);
     }

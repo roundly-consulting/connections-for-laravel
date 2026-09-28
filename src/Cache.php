@@ -4,21 +4,26 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections;
 
+use Illuminate\Container\Container;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 
 /**
  * @internal flush it through `Connections::flushCache()`.
  *
- * In-request connection cache. Keeps resolved connections in memory for the
- * lifetime of a single request so repeated permission checks don't re-query.
+ * In-request connection cache. Keeps resolved connections in memory so
+ * repeated permission checks within one request or job don't re-query.
  *
- * This cache is request-scoped and not shared across processes — it mirrors a
- * "resolved-this-request" cache, not a persistent store.
+ * The entries live on a container-**scoped** instance (bound by the service
+ * provider), never in process-wide static state: Laravel drops scoped
+ * instances whenever it starts a new lifecycle — each Octane request and each
+ * queue-worker job — and a fresh application never sees another's entries. A
+ * permission revoked elsewhere therefore stops authorizing on the next request
+ * or job at the latest.
  */
 final class Cache
 {
     /** @var array<string, mixed> */
-    protected static array $cache = [];
+    private array $entries = [];
 
     public static function enabled(): bool
     {
@@ -39,26 +44,44 @@ final class Cache
 
     public static function flush(): void
     {
-        self::$cache = [];
+        self::store()->entries = [];
     }
 
     public static function forget(string $key): void
     {
-        unset(self::$cache[$key]);
+        unset(self::store()->entries[$key]);
     }
 
     public static function has(string $key): bool
     {
-        return array_key_exists($key, self::$cache);
+        return array_key_exists($key, self::store()->entries);
     }
 
     public static function get(string $key): mixed
     {
-        return self::$cache[$key] ?? null;
+        return self::store()->entries[$key] ?? null;
     }
 
     public static function put(string $key, mixed $value): mixed
     {
-        return self::$cache[$key] = $value;
+        return self::store()->entries[$key] = $value;
+    }
+
+    /**
+     * The current lifecycle's instance. The service provider binds it scoped;
+     * should it be missing (provider not registered), bind it the same way.
+     */
+    private static function store(): self
+    {
+        $container = Container::getInstance();
+
+        if (! $container->bound(self::class)) {
+            $container->scoped(self::class);
+        }
+
+        /** @var self $store */
+        $store = $container->make(self::class);
+
+        return $store;
     }
 }

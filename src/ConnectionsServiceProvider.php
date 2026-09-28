@@ -52,6 +52,10 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(ConnectionManager::class);
+
+        // Scoped, not static: Octane (per request) and the queue worker (per job) drop
+        // scoped instances between lifecycles, so a cached permission never outlives one.
+        $this->app->scoped(Cache::class);
     }
 
     public function boot(): void
