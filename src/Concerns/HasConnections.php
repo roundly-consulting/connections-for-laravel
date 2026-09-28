@@ -252,7 +252,9 @@ trait HasConnections
 
     /**
      * The connectables this model is connected to of the given type. Accepts a
-     * fully-qualified class name or a registered morph alias.
+     * fully-qualified class name or a registered morph alias. Like
+     * isConnectedTo(), only active connections count while
+     * `enforce_active_on_check` is on.
      *
      * @return Collection<int, Model>
      */
@@ -273,8 +275,11 @@ trait HasConnections
     }
 
     /**
-     * The connectors connected to this model of the given type.
+     * The connectors connected to this model of the given type. Like
+     * hasConnector(), only active connections count while
+     * `enforce_active_on_check` is on.
      *
+            ->when($this->enforceActive(), fn ($query) => $query->active())
      * @return Collection<int, Model>
      */
     public function connectorsOfType(string $class): Collection
@@ -296,6 +301,7 @@ trait HasConnections
     /**
      * @param  Collection<int, string>|list<string>  $permissions
      * @return list<string>
+            ->when($this->enforceActive(), fn ($query) => $query->active())
      */
     private function toPermissionList(Collection|array $permissions): array
     {
