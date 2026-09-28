@@ -244,10 +244,22 @@ trait HasConnections
         return $this->connections()->expiringSoon($days);
     }
 
-    /** @return MorphMany<Connection, $this> */
+    /**
+     * Connections granting the permission — wildcards honoured (`*`,
+     * `posts.*`), and only active ones while `enforce_active_on_check` is on,
+     * matching hasPermissionThroughConnection().
+     *
+     * @return MorphMany<Connection, $this>
+     */
     public function connectionsWithPermission(string $permission): MorphMany
     {
-        return $this->connections()->withPermission($permission);
+        $relation = $this->connections()->withPermission($permission);
+
+        if ($this->enforceActive()) {
+            $relation->active();
+        }
+
+        return $relation;
     }
 
     /**
@@ -265,6 +277,7 @@ trait HasConnections
         /** @var Collection<int, Connection> $connections */
         $connections = $this->connections()
             ->where('connectable_type', $type)
+            ->when($this->enforceActive(), fn ($query) => $query->active())
             ->with('connectable')
             ->get();
 
@@ -279,7 +292,6 @@ trait HasConnections
      * hasConnector(), only active connections count while
      * `enforce_active_on_check` is on.
      *
-            ->when($this->enforceActive(), fn ($query) => $query->active())
      * @return Collection<int, Model>
      */
     public function connectorsOfType(string $class): Collection
@@ -289,6 +301,7 @@ trait HasConnections
         /** @var Collection<int, Connection> $connections */
         $connections = $this->connectors()
             ->where('connector_type', $type)
+            ->when($this->enforceActive(), fn ($query) => $query->active())
             ->with('connector')
             ->get();
 
@@ -301,7 +314,6 @@ trait HasConnections
     /**
      * @param  Collection<int, string>|list<string>  $permissions
      * @return list<string>
-            ->when($this->enforceActive(), fn ($query) => $query->active())
      */
     private function toPermissionList(Collection|array $permissions): array
     {

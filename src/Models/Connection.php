@@ -204,12 +204,38 @@ class Connection extends Model
     }
 
     /**
+     * Connections whose stored set grants the permission: the exact string,
+     * `*`, or a trailing segment wildcard (`posts.*` and `posts.comments.*`
+     * for `posts.comments.delete`). Status-agnostic — chain active() for
+     * access semantics. hasPermission() stays the authority for any other
+     * pattern shape (e.g. `posts.*.edit`).
+     *
      * @param  Builder<Connection>  $query
      * @return Builder<Connection>
      */
     public function scopeWithPermission(Builder $query, string $permission): Builder
     {
-        return $query->whereJsonContains('permissions', $permission);
+        return $query->where(function (Builder $query) use ($permission): void {
+            foreach (self::grantingPatterns($permission) as $pattern) {
+                $query->orWhereJsonContains('permissions', $pattern);
+            }
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function grantingPatterns(string $permission): array
+    {
+        $patterns = [$permission, '*'];
+        $prefix = '';
+
+        foreach (array_slice(explode('.', $permission), 0, -1) as $segment) {
+            $prefix .= $segment.'.';
+            $patterns[] = $prefix.'*';
+        }
+
+        return array_values(array_unique($patterns));
     }
 
     protected static function newFactory(): ConnectionFactory
