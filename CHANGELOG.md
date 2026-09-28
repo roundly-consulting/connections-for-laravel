@@ -52,3 +52,20 @@ Initial public release.
   `['model' => …, 'permissions' => …]` array form is removed (pass a `SyncTarget`).
 - `HasConnections` writes delegate to `ConnectionManager` instead of calling actions, so the fake
   and host overrides see them. `Cache` is `@internal` — use `Connections::flushCache()`.
+
+### Fixed
+
+- Re-connecting (`connect()`, `invite()`, `toggle()`, `connectAll()`, `sync()`) keeps an existing
+  connection's status, permissions and expiry unless restated, and never lifts a block — only
+  `accept()` does. Every status change goes through `ConnectionStatus::canTransitionTo()`; an
+  invalid one throws `InvalidStatusTransition`.
+- Re-connecting, granting, inviting, toggling or syncing a pair after a disconnect or prune no
+  longer hits the unique index: the soft-deleted row is revived (a blocked one stays blocked).
+- `revokeAll()` reaches pending, blocked and expired connections.
+- `permissions()->clear()` (now the `ClearPermissions` action) throws `ConnectionNotFound` instead
+  of creating a connection.
+- The in-request permission cache is container-scoped, so it resets per request / queued job
+  (Octane included), and `prune()` flushes it.
+- `connectablesOfType()` / `connectorsOfType()` and `connectionsWithPermission()` count only
+  active connections while `enforce_active_on_check` is on; the `withPermission` scope honours
+  `*` and trailing segment wildcards.
