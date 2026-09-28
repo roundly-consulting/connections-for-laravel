@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Connections\Commands;
 
 use Illuminate\Console\Command;
-use RoundlyConsulting\Connections\Actions\PruneConnections;
+use RoundlyConsulting\Connections\ConnectionManager;
 
 final class PruneConnectionsCommand extends Command
 {
@@ -13,9 +13,9 @@ final class PruneConnectionsCommand extends Command
 
     protected $description = 'Soft-delete expired connections';
 
-    public function handle(PruneConnections $pruneConnections): int
+    public function handle(ConnectionManager $connections): int
     {
-        $count = $pruneConnections->execute();
+        $count = $connections->prune();
 
         $this->info("Pruned {$count} expired connection(s).");
 

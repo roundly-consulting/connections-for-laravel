@@ -56,7 +56,7 @@ test('it dispatches ConnectionPermissionsChanged on grant', function (): void {
 
     Event::fake();
 
-    Connections::between($user, $team)->grant('view');
+    Connections::between($user, $team)->permissions()->grant('view');
 
     Event::assertDispatched(ConnectionPermissionsChanged::class, function (ConnectionPermissionsChanged $event): bool {
         return $event->previous === [] && $event->current === ['view'];
@@ -71,7 +71,7 @@ test('it does not dispatch a permission event when nothing changed', function ()
 
     Event::fake();
 
-    Connections::between($user, $team)->grant('view');
+    Connections::between($user, $team)->permissions()->grant('view');
 
     Event::assertNotDispatched(ConnectionPermissionsChanged::class);
 });

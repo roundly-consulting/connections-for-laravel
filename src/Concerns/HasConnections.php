@@ -9,27 +9,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
-use InvalidArgumentException;
-use RoundlyConsulting\Connections\Actions\AcceptConnection;
-use RoundlyConsulting\Connections\Actions\BlockConnection;
-use RoundlyConsulting\Connections\Actions\CreateConnection;
-use RoundlyConsulting\Connections\Actions\DisconnectConnection;
-use RoundlyConsulting\Connections\Actions\GrantPermissions;
-use RoundlyConsulting\Connections\Actions\RestoreConnection;
-use RoundlyConsulting\Connections\Actions\RevokePermissions;
-use RoundlyConsulting\Connections\Actions\SyncConnections;
-use RoundlyConsulting\Connections\Actions\SyncPermissions;
 use RoundlyConsulting\Connections\Cache;
+use RoundlyConsulting\Connections\ConnectionManager;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
-use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\Support\ConnectionModel;
 
 /**
  * Gives an Eloquent model the ability to form connections to other models,
  * carrying a set of permissions and an optional expiration.
+ *
+ * Every write delegates to the ConnectionManager (the `Connections` facade
+ * root), so host overrides and `Connections::fake()` see trait calls too.
  */
 trait HasConnections
 {
@@ -131,19 +124,22 @@ trait HasConnections
      */
     public function connectTo(Connectable $connectable, Collection|array|null $permissions = null, ?CarbonInterface $expiresAt = null, ?array $meta = null): Connection
     {
-        return app(CreateConnection::class)->execute(
-            $this,
-            $connectable,
-            $permissions === null ? null : $this->toPermissionCollection($permissions),
-            $expiresAt,
-            null,
-            $meta,
-        );
+        $pending = app(ConnectionManager::class)->between($this, $connectable)->expiringAt($expiresAt);
+
+        if ($permissions !== null) {
+            $pending->withPermissions(...$this->toPermissionList($permissions));
+        }
+
+        if ($meta !== null) {
+            $pending->withMeta($meta);
+        }
+
+        return $pending->connect();
     }
 
     public function disconnectFrom(Connectable $connectable): void
     {
-        app(DisconnectConnection::class)->execute($this, $connectable);
+        app(ConnectionManager::class)->between($this, $connectable)->disconnect();
     }
 
     /**
@@ -153,13 +149,13 @@ trait HasConnections
      */
     public function toggleConnection(Connectable $connectable, Collection|array|null $permissions = null): ?Connection
     {
-        if ($this->isConnectedTo($connectable)) {
-            $this->disconnectFrom($connectable);
+        $pending = app(ConnectionManager::class)->between($this, $connectable);
 
-            return null;
+        if ($permissions !== null) {
+            $pending->withPermissions(...$this->toPermissionList($permissions));
         }
 
-        return $this->connectTo($connectable, $permissions);
+        return $pending->toggle();
     }
 
     /**
@@ -167,18 +163,12 @@ trait HasConnections
      */
     public function reconnectTo(Connectable $connectable): Connection
     {
-        return app(RestoreConnection::class)->execute($this, $connectable);
+        return app(ConnectionManager::class)->between($this, $connectable)->reconnect();
     }
 
     public function inviteConnection(Connectable $connectable): Connection
     {
-        return app(CreateConnection::class)->execute(
-            $this,
-            $connectable,
-            null,
-            null,
-            ConnectionStatus::Pending,
-        );
+        return app(ConnectionManager::class)->between($this, $connectable)->invite();
     }
 
     /**
@@ -186,7 +176,7 @@ trait HasConnections
      */
     public function acceptConnectionFrom(Connectable $connector): Connection
     {
-        return app(AcceptConnection::class)->execute($connector, $this);
+        return app(ConnectionManager::class)->between($connector, $this)->accept();
     }
 
     /**
@@ -194,22 +184,22 @@ trait HasConnections
      */
     public function blockConnectionFrom(Connectable $connector): Connection
     {
-        return app(BlockConnection::class)->execute($connector, $this);
+        return app(ConnectionManager::class)->between($connector, $this)->block();
     }
 
     public function grantThroughConnection(Connectable $connectable, string ...$permissions): Connection
     {
-        return app(GrantPermissions::class)->execute($this, $connectable, ...$permissions);
+        return app(ConnectionManager::class)->between($this, $connectable)->permissions()->grant(...$permissions);
     }
 
     public function revokeThroughConnection(Connectable $connectable, string ...$permissions): Connection
     {
-        return app(RevokePermissions::class)->execute($this, $connectable, ...$permissions);
+        return app(ConnectionManager::class)->between($this, $connectable)->permissions()->revoke(...$permissions);
     }
 
     public function clearConnectionPermissions(Connectable $connectable): Connection
     {
-        return app(SyncPermissions::class)->execute($this, $connectable);
+        return app(ConnectionManager::class)->between($this, $connectable)->permissions()->clear();
     }
 
     /**
@@ -217,28 +207,19 @@ trait HasConnections
      */
     public function syncConnectionPermissions(Connectable $connectable, Collection|array $permissions): Connection
     {
-        return app(SyncPermissions::class)->execute($this, $connectable, ...$this->toPermissionList($permissions));
+        return app(ConnectionManager::class)->between($this, $connectable)->permissions()->sync(...$this->toPermissionList($permissions));
     }
 
     /**
      * Reconcile this model's connections to exactly the given set, connecting
-     * any missing connectables and disconnecting any extras.
+     * any missing connectables and disconnecting any extras. Pass a SyncTarget
+     * to give a connectable its own permissions, expiry or meta.
      *
-     * Accepts a list of Connectable models, or a map keyed by anything where
-     * each value is a SyncTarget or an attribute array
-     * (['model' => Connectable, 'permissions' => ..., 'expires_at' => ..., 'meta' => ...]).
-     *
-     * @param  iterable<int|string, Connectable|SyncTarget|array<string, mixed>>  $connectables
+     * @param  iterable<int|string, Connectable|SyncTarget>  $connectables
      */
     public function syncConnections(iterable $connectables): SyncResult
     {
-        $targets = [];
-
-        foreach ($connectables as $value) {
-            $targets[] = $this->normalizeSyncTarget($value);
-        }
-
-        return app(SyncConnections::class)->execute($this, $targets);
+        return app(ConnectionManager::class)->from($this)->sync($connectables);
     }
 
     /** @return Collection<int, string> */
@@ -317,19 +298,6 @@ trait HasConnections
     }
 
     /**
-     * @param  Collection<int, string>|list<string>|null  $permissions
-     * @return Collection<int, string>
-     */
-    private function toPermissionCollection(Collection|array|null $permissions): Collection
-    {
-        if ($permissions instanceof Collection) {
-            return $permissions;
-        }
-
-        return new Collection($permissions ?? []);
-    }
-
-    /**
      * @param  Collection<int, string>|list<string>  $permissions
      * @return list<string>
      */
@@ -338,37 +306,6 @@ trait HasConnections
         $values = $permissions instanceof Collection ? $permissions->all() : $permissions;
 
         return array_values(array_map(static fn (mixed $permission): string => (string) $permission, $values));
-    }
-
-    /**
-     * @param  Connectable|SyncTarget|array<string, mixed>  $value
-     */
-    private function normalizeSyncTarget(Connectable|SyncTarget|array $value): SyncTarget
-    {
-        if ($value instanceof SyncTarget) {
-            return $value;
-        }
-
-        if ($value instanceof Connectable) {
-            return new SyncTarget($value);
-        }
-
-        $model = $value['model'] ?? null;
-
-        if (! $model instanceof Connectable) {
-            throw new InvalidArgumentException('Each syncConnections target array must include a "model" Connectable.');
-        }
-
-        $permissions = $value['permissions'] ?? null;
-        $expiresAt = $value['expires_at'] ?? null;
-        $meta = $value['meta'] ?? null;
-
-        return new SyncTarget(
-            model: $model,
-            permissions: is_array($permissions) ? array_values(array_map(static fn (mixed $p): string => (string) $p, $permissions)) : null,
-            expiresAt: $expiresAt instanceof CarbonInterface ? $expiresAt : null,
-            meta: is_array($meta) ? $meta : null,
-        );
     }
 
     /** @return MorphMany<Connection, $this> */

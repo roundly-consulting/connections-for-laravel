@@ -9,10 +9,11 @@ use RoundlyConsulting\Connections\PendingConnection;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
 
-test('the manager is bound as a singleton', function (): void {
-    expect(app('connections'))
+test('the manager is bound as a singleton under its class name', function (): void {
+    expect(app(ConnectionManager::class))
         ->toBeInstanceOf(ConnectionManager::class)
-        ->and(app('connections'))->toBe(app(ConnectionManager::class));
+        ->toBe(app(ConnectionManager::class))
+        ->and(Connections::getFacadeRoot())->toBe(app(ConnectionManager::class));
 });
 
 test('between and from return a pending connection', function (): void {

@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Connections;
 
 use Carbon\CarbonInterface;
 use Carbon\CarbonInterval;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Connections\Actions\AcceptConnection;
@@ -18,15 +19,20 @@ use RoundlyConsulting\Connections\Actions\ExtendConnection;
 use RoundlyConsulting\Connections\Actions\GrantPermissions;
 use RoundlyConsulting\Connections\Actions\RestoreConnection;
 use RoundlyConsulting\Connections\Actions\RevokePermissions;
-use RoundlyConsulting\Connections\Actions\SyncPermissions;
+use RoundlyConsulting\Connections\Actions\SyncConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
+use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Exceptions\MissingConnectable;
 use RoundlyConsulting\Connections\Models\Connection;
 
 /**
  * Fluent builder for connection operations between a connector and a
- * (possibly deferred) connectable.
+ * (possibly deferred) connectable. Every terminal verb resolves its action from
+ * the container, so host overrides and `Connections::fake()` apply.
+ *
+ * Not final: the recording fake extends it.
  */
 class PendingConnection
 {
@@ -46,6 +52,7 @@ class PendingConnection
     protected array $connectables = [];
 
     public function __construct(
+        protected readonly Container $container,
         protected readonly Connectable $connector,
         protected ?Connectable $connectable = null,
     ) {}
@@ -135,7 +142,7 @@ class PendingConnection
 
     public function connect(): Connection
     {
-        return app(CreateConnection::class)->execute(
+        return $this->container->make(CreateConnection::class)->execute(
             $this->connector,
             $this->resolveConnectable(),
             $this->permissionCollection(),
@@ -156,17 +163,17 @@ class PendingConnection
 
     public function accept(): Connection
     {
-        return app(AcceptConnection::class)->execute($this->connector, $this->resolveConnectable());
+        return $this->container->make(AcceptConnection::class)->execute($this->connector, $this->resolveConnectable());
     }
 
     public function block(): Connection
     {
-        return app(BlockConnection::class)->execute($this->connector, $this->resolveConnectable());
+        return $this->container->make(BlockConnection::class)->execute($this->connector, $this->resolveConnectable());
     }
 
     public function disconnect(): void
     {
-        app(DisconnectConnection::class)->execute($this->connector, $this->resolveConnectable());
+        $this->container->make(DisconnectConnection::class)->execute($this->connector, $this->resolveConnectable());
     }
 
     /**
@@ -192,7 +199,7 @@ class PendingConnection
      */
     public function reconnect(): Connection
     {
-        return app(RestoreConnection::class)->execute($this->connector, $this->resolveConnectable());
+        return $this->container->make(RestoreConnection::class)->execute($this->connector, $this->resolveConnectable());
     }
 
     /**
@@ -203,46 +210,62 @@ class PendingConnection
         return $this->reconnect();
     }
 
-    public function grant(string ...$permissions): Connection
+    public function extend(?CarbonInterface $expiresAt): Connection
     {
-        $permissions = $permissions === [] ? $this->permissions ?? [] : array_values($permissions);
-
-        return app(GrantPermissions::class)->execute($this->connector, $this->resolveConnectable(), ...$permissions);
-    }
-
-    public function revoke(string ...$permissions): Connection
-    {
-        return app(RevokePermissions::class)->execute($this->connector, $this->resolveConnectable(), ...array_values($permissions));
+        return $this->container->make(ExtendConnection::class)->execute($this->connector, $this->resolveConnectable(), $expiresAt);
     }
 
     /**
-     * Revoke every permission from the connection.
+     * Whether an active connection exists for the pair (any stored connection
+     * when `enforce_active_on_check` is off).
      */
-    public function clearPermissions(): Connection
-    {
-        return app(SyncPermissions::class)->execute($this->connector, $this->resolveConnectable());
-    }
-
-    public function sync(string ...$permissions): Connection
-    {
-        $permissions = $permissions === [] ? $this->permissions ?? [] : array_values($permissions);
-
-        return app(SyncPermissions::class)->execute($this->connector, $this->resolveConnectable(), ...$permissions);
-    }
-
-    public function extend(?CarbonInterface $expiresAt): Connection
-    {
-        return app(ExtendConnection::class)->execute($this->connector, $this->resolveConnectable(), $expiresAt);
-    }
-
     public function exists(): bool
     {
         return $this->connector->isConnectedTo($this->resolveConnectable());
     }
 
-    public function can(string $permission): bool
+    /**
+     * The pair's connection in any status, or null when there is none (or it
+     * is soft-deleted).
+     */
+    public function find(): ?Connection
     {
-        return $this->connector->hasPermissionThroughConnection($this->resolveConnectable(), $permission);
+        $connectable = $this->resolveConnectable();
+
+        /** @var Connection|null $connection */
+        $connection = $this->connector->connections()
+            ->where('connectable_id', $connectable->getKey())
+            ->where('connectable_type', $connectable->getMorphClass())
+            ->first();
+
+        return $connection;
+    }
+
+    /**
+     * The permission set on this pair: grant / revoke / sync / clear and the
+     * all / has / hasAny / hasAll checks.
+     */
+    public function permissions(): ConnectionPermissions
+    {
+        return new ConnectionPermissions($this->container, $this->connector, $this->resolveConnectable());
+    }
+
+    /**
+     * Reconcile the connector's connections to exactly the given set: connect
+     * what is missing, disconnect the extras and update the overlap. Uses the
+     * connector only — a staged connectable is ignored.
+     *
+     * @param  iterable<int|string, Connectable|SyncTarget>  $connectables
+     */
+    public function sync(iterable $connectables): SyncResult
+    {
+        $targets = [];
+
+        foreach ($connectables as $connectable) {
+            $targets[] = $connectable instanceof SyncTarget ? $connectable : new SyncTarget($connectable);
+        }
+
+        return $this->container->make(SyncConnections::class)->execute($this->connector, $targets);
     }
 
     /**
@@ -252,7 +275,7 @@ class PendingConnection
      */
     public function connectAll(): Collection
     {
-        return app(BulkConnect::class)->execute(
+        return $this->container->make(BulkConnect::class)->execute(
             $this->connector,
             $this->resolveConnectables(),
             $this->permissionCollection(),
@@ -267,7 +290,7 @@ class PendingConnection
      */
     public function disconnectAll(): void
     {
-        app(BulkDisconnect::class)->execute($this->connector, $this->resolveConnectables());
+        $this->container->make(BulkDisconnect::class)->execute($this->connector, $this->resolveConnectables());
     }
 
     /**
@@ -279,7 +302,7 @@ class PendingConnection
     {
         $permissions = $permissions === [] ? $this->permissions ?? [] : array_values($permissions);
 
-        $action = app(GrantPermissions::class);
+        $action = $this->container->make(GrantPermissions::class);
 
         $results = new Collection;
 
@@ -297,7 +320,7 @@ class PendingConnection
      */
     public function revokeAll(string ...$permissions): Collection
     {
-        $action = app(RevokePermissions::class);
+        $action = $this->container->make(RevokePermissions::class);
 
         $results = new Collection;
 
@@ -320,7 +343,7 @@ class PendingConnection
         return $this->permissions === null ? null : new Collection($this->permissions);
     }
 
-    private function resolveConnectable(): Connectable
+    protected function resolveConnectable(): Connectable
     {
         return $this->connectable ?? throw MissingConnectable::make();
     }

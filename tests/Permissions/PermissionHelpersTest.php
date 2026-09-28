@@ -24,12 +24,12 @@ test('hasAllPermissionsThroughConnection requires all permissions', function ():
         ->and($user->hasAllPermissionsThroughConnection($team, 'view', 'delete'))->toBeFalse();
 });
 
-test('clearPermissions on the builder revokes everything', function (): void {
+test('permissions()->clear() revokes everything', function (): void {
     $user = User::create();
     $team = Team::create();
     Connections::between($user, $team)->withPermissions('view', 'edit')->connect();
 
-    $connection = Connections::between($user, $team)->clearPermissions();
+    $connection = Connections::between($user, $team)->permissions()->clear();
 
     expect($connection->permissions->all())->toBe([]);
 });

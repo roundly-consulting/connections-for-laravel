@@ -4,78 +4,172 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Testing;
 
+use Carbon\CarbonInterface;
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Collection;
+use RoundlyConsulting\Connections\ConnectionPermissions;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
+use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\PendingConnection;
 
 /**
- * A PendingConnection that records terminal verbs against the fake while still
- * passing them through to the real builder behaviour (so DB reads/writes work).
+ * A PendingConnection that passes every verb through to the real builder (so
+ * DB reads and writes work) and records it on the fake once it succeeds. Bulk
+ * verbs record one operation per staged target.
  */
 final class RecordingPendingConnection extends PendingConnection
 {
-    private ConnectionFake $fake;
-
     public function __construct(
-        ConnectionFake $fake,
+        private readonly ConnectionFake $fake,
+        Container $container,
         Connectable $connector,
         ?Connectable $connectable = null,
     ) {
-        parent::__construct($connector, $connectable);
-
-        $this->fake = $fake;
+        parent::__construct($container, $connector, $connectable);
     }
 
     public function connect(): Connection
     {
-        $this->fake->record('connect', $this->connector, $this->connectable, $this->permissions ?? []);
+        $connection = parent::connect();
 
-        return parent::connect();
+        $this->fake->record(new RecordedOperation('connect', $this->connector, $this->connectable, $this->permissions ?? []));
+
+        return $connection;
     }
 
     public function invite(): Connection
     {
-        $this->fake->record('invite', $this->connector, $this->connectable, $this->permissions ?? []);
-
-        // Stage pending then call the parent connect directly so we don't
-        // double-record via the overridden connect().
+        // Call the parent connect directly so the overridden connect() does not
+        // record a second operation.
         $this->asPending();
+        $connection = parent::connect();
 
-        return parent::connect();
+        $this->fake->record(new RecordedOperation('invite', $this->connector, $this->connectable, $this->permissions ?? []));
+
+        return $connection;
     }
 
     public function accept(): Connection
     {
-        $this->fake->record('accept', $this->connector, $this->connectable, $this->permissions ?? []);
-
-        return parent::accept();
+        return $this->recorded('accept', parent::accept());
     }
 
     public function block(): Connection
     {
-        $this->fake->record('block', $this->connector, $this->connectable, $this->permissions ?? []);
-
-        return parent::block();
+        return $this->recorded('block', parent::block());
     }
 
     public function disconnect(): void
     {
-        $this->fake->record('disconnect', $this->connector, $this->connectable, $this->permissions ?? []);
-
         parent::disconnect();
+
+        $this->fake->record(new RecordedOperation('disconnect', $this->connector, $this->connectable));
     }
 
-    public function grant(string ...$permissions): Connection
+    public function reconnect(): Connection
     {
-        $this->fake->record('grant', $this->connector, $this->connectable, array_values($permissions));
-
-        return parent::grant(...$permissions);
+        return $this->recorded('reconnect', parent::reconnect());
     }
 
-    public function revoke(string ...$permissions): Connection
+    public function extend(?CarbonInterface $expiresAt): Connection
     {
-        $this->fake->record('revoke', $this->connector, $this->connectable, array_values($permissions));
+        return $this->recorded('extend', parent::extend($expiresAt));
+    }
 
-        return parent::revoke(...$permissions);
+    public function permissions(): ConnectionPermissions
+    {
+        return new RecordingConnectionPermissions(
+            $this->fake,
+            $this->container,
+            $this->connector,
+            $this->resolveConnectable(),
+        );
+    }
+
+    /**
+     * @param  iterable<int|string, Connectable|SyncTarget>  $connectables
+     */
+    public function sync(iterable $connectables): SyncResult
+    {
+        $staged = [];
+
+        foreach ($connectables as $connectable) {
+            $staged[] = $connectable;
+        }
+
+        $result = parent::sync($staged);
+
+        $this->fake->record(new RecordedOperation(
+            'sync',
+            $this->connector,
+            targets: array_map(
+                static fn (Connectable|SyncTarget $target): Connectable => $target instanceof SyncTarget ? $target->model : $target,
+                $staged,
+            ),
+        ));
+
+        return $result;
+    }
+
+    /**
+     * @return Collection<int, Connection>
+     */
+    public function connectAll(): Collection
+    {
+        $connections = parent::connectAll();
+
+        $this->recordEachTarget('connect', $this->permissions ?? []);
+
+        return $connections;
+    }
+
+    public function disconnectAll(): void
+    {
+        parent::disconnectAll();
+
+        $this->recordEachTarget('disconnect');
+    }
+
+    /**
+     * @return Collection<int, Connection>
+     */
+    public function grantAll(string ...$permissions): Collection
+    {
+        $connections = parent::grantAll(...$permissions);
+
+        $this->recordEachTarget('grant', $permissions === [] ? $this->permissions ?? [] : array_values($permissions));
+
+        return $connections;
+    }
+
+    /**
+     * @return Collection<int, Connection>
+     */
+    public function revokeAll(string ...$permissions): Collection
+    {
+        $connections = parent::revokeAll(...$permissions);
+
+        $this->recordEachTarget('revoke', array_values($permissions));
+
+        return $connections;
+    }
+
+    private function recorded(string $verb, Connection $connection): Connection
+    {
+        $this->fake->record(new RecordedOperation($verb, $this->connector, $this->connectable));
+
+        return $connection;
+    }
+
+    /**
+     * @param  list<string>  $permissions
+     */
+    private function recordEachTarget(string $verb, array $permissions = []): void
+    {
+        foreach ($this->connectables as $connectable) {
+            $this->fake->record(new RecordedOperation($verb, $this->connector, $connectable, $permissions));
+        }
     }
 }

@@ -7,27 +7,25 @@ namespace RoundlyConsulting\Connections\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Connections\Actions\Concerns\DispatchesConnectionEvents;
-use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
+use RoundlyConsulting\Connections\ConnectionManager;
 use RoundlyConsulting\Connections\Events\ConnectionExpiring;
 use RoundlyConsulting\Connections\Models\Connection;
 
 final class NotifyExpiringConnectionsCommand extends Command
 {
     use DispatchesConnectionEvents;
-    use ResolvesConnections;
 
     protected $signature = 'connections:notify-expiring {--days=7 : Notify about connections expiring within this many days}';
 
     protected $description = 'Dispatch a ConnectionExpiring event for each connection expiring soon';
 
-    public function handle(): int
+    public function handle(ConnectionManager $connections): int
     {
         $days = (int) $this->option('days');
 
         $count = 0;
 
-        $this->query()
-            ->expiringSoon($days)
+        $connections->expiring($days)
             ->each(function (Connection $connection) use (&$count): void {
                 $this->dispatch(new ConnectionExpiring(
                     $connection,

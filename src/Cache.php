@@ -7,6 +7,8 @@ namespace RoundlyConsulting\Connections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 
 /**
+ * @internal flush it through `Connections::flushCache()`.
+ *
  * In-request connection cache. Keeps resolved connections in memory for the
  * lifetime of a single request so repeated permission checks don't re-query.
  *

@@ -43,12 +43,12 @@ test('it fires a removed event for each detached connection', function (): void 
     Event::assertDispatched(ConnectionRemoved::class, 1);
 });
 
-test('it honours per-target permission attributes via an array map', function (): void {
+test('it honours per-target permissions through a SyncTarget', function (): void {
     $user = User::create();
     $teamA = Team::create();
 
     $user->syncConnections([
-        ['model' => $teamA, 'permissions' => ['view', 'edit']],
+        new SyncTarget($teamA, permissions: ['view', 'edit']),
     ]);
 
     expect($user->hasPermissionThroughConnection($teamA, 'view'))->toBeTrue()
@@ -77,11 +77,11 @@ test('an empty set detaches everything', function (): void {
         ->and($user->fresh()->isConnectedTo($teamA))->toBeFalse();
 });
 
-test('a target array without a model throws', function (): void {
+test('a shape-array target is rejected (pass a SyncTarget instead)', function (): void {
     $user = User::create();
 
     $user->syncConnections([['permissions' => ['view']]]);
-})->throws(InvalidArgumentException::class);
+})->throws(TypeError::class);
 
 test('a failure mid-sync rolls back the whole reconcile', function (): void {
     $user = User::create();

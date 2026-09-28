@@ -52,7 +52,6 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(ConnectionManager::class);
-        $this->app->alias(ConnectionManager::class, 'connections');
     }
 
     public function boot(): void

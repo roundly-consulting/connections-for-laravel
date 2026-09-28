@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Connections\ConnectionManager;
+use RoundlyConsulting\Connections\ConnectionPermissions;
 use RoundlyConsulting\Connections\Exceptions\ConnectionsException;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\PendingConnection;
@@ -22,13 +23,14 @@ ArchPresets::strictTypes('RoundlyConsulting\Connections');
  * is not theoretical — it immediately surfaced PendingConnection, a class none of the
  * three scoped rules reached.
  *
- * The four exemptions are deliberate extension points, each verified to be extended by
+ * The five exemptions are deliberate extension points, each verified to be extended by
  * shipped code rather than assumed:
  *  - Connection, which `connections.model` invites a host to subclass (pinned by the
  *    preset below instead);
  *  - ConnectionsException, the base every connections error extends so a host can catch
  *    them uniformly;
  *  - PendingConnection, extended by the shipped RecordingPendingConnection;
+ *  - ConnectionPermissions, extended by the shipped RecordingConnectionPermissions;
  *  - ConnectionManager, extended by the shipped ConnectionFake.
  *
  * `final` on any of them is a fatal error, not a tightening. Both of the last two were
@@ -38,6 +40,7 @@ ArchPresets::finalByDefault('RoundlyConsulting\Connections', [
     Connection::class,
     ConnectionsException::class,
     PendingConnection::class,
+    ConnectionPermissions::class,
     ConnectionManager::class,
 ]);
 

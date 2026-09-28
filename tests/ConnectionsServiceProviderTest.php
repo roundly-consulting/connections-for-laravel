@@ -44,7 +44,7 @@ it('publishes the connections migration under its own name', function (): void {
 // when the provider was made to really loadMigrationsFrom(), so this was a pure duplicate.
 
 it('binds the connection manager as a shared singleton', function (): void {
-    expect(app(ConnectionManager::class))->toBe(app('connections'))
+    expect(app(ConnectionManager::class))->toBe(app(ConnectionManager::class))
         ->toBeInstanceOf(ConnectionManager::class);
 });
 

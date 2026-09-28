@@ -20,7 +20,7 @@ test('a grant is visible without forcing a fresh lookup', function (): void {
     // Prime the cache with a miss.
     expect($user->hasPermissionThroughConnection($team, 'view'))->toBeFalse();
 
-    Connections::between($user, $team)->grant('view');
+    Connections::between($user, $team)->permissions()->grant('view');
 
     expect($user->hasPermissionThroughConnection($team, 'view'))->toBeTrue();
 });

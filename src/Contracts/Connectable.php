@@ -67,7 +67,7 @@ interface Connectable
     public function syncConnectionPermissions(Connectable $connectable, Collection|array $permissions): Connection;
 
     /**
-     * @param  iterable<int|string, Connectable|SyncTarget|array<string, mixed>>  $connectables
+     * @param  iterable<int|string, Connectable|SyncTarget>  $connectables
      */
     public function syncConnections(iterable $connectables): SyncResult;
 

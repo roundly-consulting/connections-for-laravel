@@ -17,17 +17,17 @@ test('it connects, grants, revokes, syncs, checks and disconnects fluently', fun
         ->withPermissions('view', 'edit')
         ->connect();
 
-    expect(Connections::between($user, $team)->can('view'))->toBeTrue()
+    expect(Connections::between($user, $team)->permissions()->has('view'))->toBeTrue()
         ->and(Connections::between($user, $team)->exists())->toBeTrue();
 
-    Connections::between($user, $team)->grant('publish');
-    expect(Connections::between($user, $team)->can('publish'))->toBeTrue();
+    Connections::between($user, $team)->permissions()->grant('publish');
+    expect(Connections::between($user, $team)->permissions()->has('publish'))->toBeTrue();
 
-    Connections::between($user, $team)->revoke('publish');
-    expect(Connections::between($user, $team)->can('publish'))->toBeFalse();
+    Connections::between($user, $team)->permissions()->revoke('publish');
+    expect(Connections::between($user, $team)->permissions()->has('publish'))->toBeFalse();
 
-    Connections::between($user, $team)->sync('view');
-    expect(Connections::between($user, $team)->can('edit'))->toBeFalse();
+    Connections::between($user, $team)->permissions()->sync('view');
+    expect(Connections::between($user, $team)->permissions()->has('edit'))->toBeFalse();
 
     Connections::between($user, $team)->disconnect();
     expect(Connections::between($user, $team)->exists())->toBeFalse();
@@ -39,7 +39,7 @@ test('from() defers the connectable until to()', function (): void {
 
     Connections::from($user)->to($team)->withPermissions('view')->connect();
 
-    expect(Connections::between($user, $team)->can('view'))->toBeTrue();
+    expect(Connections::between($user, $team)->permissions()->has('view'))->toBeTrue();
 });
 
 test('expiringAt sets the expiry', function (): void {
@@ -112,15 +112,6 @@ test('extend updates the expiry through the builder', function (): void {
     expect($connection->expires_at?->toDateTimeString())->toBe('2026-01-02 00:00:00');
 
     Carbon::setTestNow();
-});
-
-test('grant falls back to staged permissions when none are passed', function (): void {
-    $user = User::create();
-    $team = Team::create();
-
-    Connections::between($user, $team)->withPermissions('view')->grant();
-
-    expect(Connections::between($user, $team)->can('view'))->toBeTrue();
 });
 
 test('terminal verbs throw without a connectable', function (): void {
