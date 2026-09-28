@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Connections\Actions;
 
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 
-final class PruneConnections
+final readonly class PruneConnections
 {
     use ResolvesConnections;
 

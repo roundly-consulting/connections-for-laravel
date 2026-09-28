@@ -17,7 +17,7 @@ use RoundlyConsulting\Connections\Events\ConnectionInvited;
 use RoundlyConsulting\Connections\Events\ConnectionUpdated;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class CreateConnection
+final readonly class CreateConnection
 {
     use DispatchesConnectionEvents;
     use ResolvesConfigDefaults;

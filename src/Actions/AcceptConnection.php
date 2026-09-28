@@ -12,7 +12,7 @@ use RoundlyConsulting\Connections\Events\ConnectionAccepted;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class AcceptConnection
+final readonly class AcceptConnection
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

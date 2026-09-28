@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 
-final class BulkDisconnect
+final readonly class BulkDisconnect
 {
     use ResolvesConnections;
 

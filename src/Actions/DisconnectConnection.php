@@ -10,7 +10,7 @@ use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Events\ConnectionRemoved;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 
-final class DisconnectConnection
+final readonly class DisconnectConnection
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

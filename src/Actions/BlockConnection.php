@@ -12,7 +12,7 @@ use RoundlyConsulting\Connections\Events\ConnectionBlocked;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class BlockConnection
+final readonly class BlockConnection
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

@@ -10,7 +10,7 @@ use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Events\ConnectionRestored;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class RestoreConnection
+final readonly class RestoreConnection
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

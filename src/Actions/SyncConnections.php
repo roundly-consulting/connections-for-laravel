@@ -15,7 +15,7 @@ use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Events\ConnectionRemoved;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class SyncConnections
+final readonly class SyncConnections
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

@@ -12,7 +12,7 @@ use RoundlyConsulting\Connections\Events\ConnectionPermissionsChanged;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class RevokePermissions
+final readonly class RevokePermissions
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;

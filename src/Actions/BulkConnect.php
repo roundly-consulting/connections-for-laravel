@@ -11,7 +11,7 @@ use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class BulkConnect
+final readonly class BulkConnect
 {
     public function __construct(
         private readonly CreateConnection $createConnection,

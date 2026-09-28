@@ -11,7 +11,7 @@ use RoundlyConsulting\Connections\DataTransferObjects\PermissionSet;
 use RoundlyConsulting\Connections\Events\ConnectionPermissionsChanged;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class GrantPermissions
+final readonly class GrantPermissions
 {
     use DispatchesConnectionEvents;
     use ResolvesConnections;
