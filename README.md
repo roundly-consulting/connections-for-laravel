@@ -78,7 +78,12 @@ return [
     // The database table that stores connections. The migration reads this value.
     'table' => env('CONNECTIONS_TABLE', 'connections'),
 
-    // In-request memoisation of resolved connections. Writes invalidate it automatically.
+    // Key type of the connector / connectable morph columns: bigint, uuid or ulid.
+    // Read by the migration — choose it before you publish and run it.
+    'key_type' => env('CONNECTIONS_KEY_TYPE', 'bigint'),
+
+    // In-request memoisation of resolved connections. Writes invalidate it automatically,
+    // and it is dropped at the start of every request / queued job (Octane included).
     'cache' => [
         'enabled' => env('CONNECTIONS_CACHE_ENABLED', true),
     ],
@@ -112,7 +117,8 @@ return [
 |---------------------------|-----------------|---------------------|------------------------------------|---------|
 | `model`                   | `class-string`  | `Connection::class` | —                                  | Model class used when reading and writing connections. |
 | `table`                   | `string`        | `connections`       | `CONNECTIONS_TABLE`                | Table that stores connections; read by the migration. |
-| `cache.enabled`           | `bool`          | `true`              | `CONNECTIONS_CACHE_ENABLED`        | In-request connection cache. Disable to always re-query. |
+| `key_type`                | `string`        | `bigint`            | `CONNECTIONS_KEY_TYPE`             | Key type of the polymorphic `connector` / `connectable` columns: `bigint`, `uuid` or `ulid` (anything else falls back to `bigint`). Read by the migration, so set it before migrating. |
+| `cache.enabled`           | `bool`          | `true`              | `CONNECTIONS_CACHE_ENABLED`        | In-request connection cache, scoped to one request / queued job. Disable to always re-query. |
 | `events.enabled`          | `bool`          | `true`              | `CONNECTIONS_EVENTS_ENABLED`       | Dispatch lifecycle events. |
 | `register_gate`           | `bool`          | `false`             | `CONNECTIONS_REGISTER_GATE`        | Fall a host `Gate` check through to connection permissions. |
 | `default_permissions`     | `list<string>`  | `[]`                | —                                  | Permissions applied when a connection is created with none. An explicit empty set stays empty. |
@@ -163,7 +169,7 @@ The `Connections` facade is the package's public API. Every operation is reachab
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Facades\Connections;
 
-// Create or update a connection (idempotent), with permissions and an expiry.
+// Create the connection, or update the pair's existing one, with permissions and an expiry.
 Connections::between($user, $team)
     ->withPermissions('view', 'edit')
     ->expiresIn(now()->addMonth())   // CarbonInterface, CarbonInterval, or seconds
@@ -192,9 +198,17 @@ Connections::expiring(14)->with('connector')->get();
 // Remove all expired connections, returning how many were removed.
 $removed = Connections::prune();
 
-// Drop the in-request permission cache (e.g. between jobs in a long-running worker).
+// Drop the in-request permission cache mid-request (it already resets per request / job).
 Connections::flushCache();
 ```
+
+**Re-connecting is safe.** A pair has at most one connection row, and `connect()` on a pair that
+already has one only changes what you pass: its status, permissions, expiry and meta are kept
+unless restated (meta is merged — see **Connection metadata**), and config defaults
+(`default_permissions`, `default_status`, `expiry.default`) apply to new connections only. To
+clear an expiry use `extend(null)`. After a `disconnect()` or a prune, `connect()` (and `grant()`,
+`permissions()->sync()`, `invite()`, `toggle()`, `sync()`) revives the pair as a **fresh**
+connection — except a blocked one, which stays blocked (see **Invitations**).
 
 ### Permissions on a pair — `permissions()`
 
@@ -206,7 +220,7 @@ $permissions = Connections::between($user, $team)->permissions();
 $permissions->grant('publish');          // Connection — creates the connection if absent
 $permissions->revoke('publish');         // Connection — throws ConnectionNotFound if absent
 $permissions->sync('view', 'edit');      // Connection — exact set, creates if absent
-$permissions->clear();                   // Connection — remove every permission
+$permissions->clear();                   // Connection — remove every permission; throws ConnectionNotFound if absent
 
 $permissions->all();                     // Collection<int, string> — what is stored
 $permissions->has('edit');               // bool
@@ -287,6 +301,18 @@ $connection->isActive();   // accepted AND not expired
 Only **active** connections grant permissions and count for `isConnectedTo` while
 `enforce_active_on_check` is on (the default).
 
+Status only moves the way `ConnectionStatus::canTransitionTo()` allows, and every action enforces
+it:
+
+- `connect()`, `toggle()`, `connectAll()` and `sync()` never change an existing connection's
+  status — re-connecting cannot self-accept a pending invitation, demote an accepted one, or
+  lift a block.
+- `invite()` over a pending invitation is fine; over an accepted or blocked connection it throws
+  `RoundlyConsulting\Connections\Exceptions\InvalidStatusTransition`.
+- A block is lifted only by an explicit `accept()` (`$team->acceptConnectionFrom($user)`). It
+  also survives `disconnect()` and `connections:prune`: re-connecting a soft-deleted blocked pair
+  restores it **still blocked** (firing `ConnectionRestored`).
+
 ### Connection metadata
 
 Attach free-form context to a connection with a JSON `meta` bag:
@@ -300,7 +326,7 @@ $connection->meta('role.label');           // 'owner' (dot access)
 $connection->meta('missing', 'fallback');  // 'fallback'
 
 // Re-connecting merges meta by default; replaceMeta() overwrites instead.
-Connections::between($user, $team)->withMeta(['note' => 'hi'])->connect();          // merge
+Connections::between($user, $team)->withMeta(['note' => 'hi'])->connect();          // merge; perms + expiry kept
 Connections::between($user, $team)->withMeta(['note' => 'hi'])->replaceMeta()->connect();
 
 // The trait verb takes meta too.
@@ -316,15 +342,18 @@ Operate on many connectables at once, or reconcile an exact set:
 Connections::from($user)->toMany([$teamA, $teamB])->withPermissions('view')->connectAll();
 Connections::from($user)->toMany($teams)->disconnectAll();
 Connections::from($user)->toMany($teams)->grantAll('publish');
-Connections::from($user)->toMany($teams)->revokeAll('publish');
+Connections::from($user)->toMany($teams)->revokeAll('publish'); // any status: pending, blocked, expired
 
 // Reconcile to exactly this set: connect missing, disconnect extras, update overlap.
+// Safe to repeat — a target detached earlier is revived, not re-inserted.
 $result = Connections::from($user)->sync([$teamA, $teamC]);   // or $user->syncConnections([...])
-$result->attached;  // list of newly connected ids
+$result->attached;  // list of newly connected (or revived) ids
 $result->detached;  // list of disconnected ids
 $result->updated;   // list of ids that already existed
 
-// Per-target permissions, expiry or meta through SyncTarget DTOs.
+// Per-target permissions, expiry or meta through SyncTarget DTOs. On an overlap, only what the
+// target states changes: a plain model (or a null field) keeps the stored value, and the
+// status is never touched.
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 
 Connections::from($user)->sync([
@@ -336,12 +365,14 @@ Connections::from($user)->sync([
 ### Toggle, reconnect & restore
 
 ```php
-// Connect if absent, disconnect if present.
+// Disconnect an active connection, otherwise connect — as often as you like. Over a pending,
+// blocked or expired row the "connect" keeps that status and expiry (it never lifts a block
+// or renews an expiry — use accept() / extend() for that).
 Connections::between($user, $team)->toggle();   // ?Connection
 $user->toggleConnection($team);
 
-// Restore a previously soft-deleted connection (or connect afresh if none trashed),
-// firing ConnectionRestored. Avoids the unique-index collision a fresh insert would hit.
+// Restore a previously soft-deleted connection with the permissions, expiry and meta it had
+// (connect() would start it fresh), firing ConnectionRestored — or connect afresh if none trashed.
 Connections::between($user, $team)->reconnect();
 Connections::between($user, $team)->restore();  // alias
 $user->reconnectTo($team);
@@ -398,19 +429,25 @@ $user->hasPermissionThroughConnection($team, 'users.edit');  // false
 $user->activeConnections();                 // accepted + not expired
 $user->expiredConnections();                // past expiry
 $user->expiringConnections($days = 7);      // expiring within N days
-$user->connectionsWithPermission('publish');
+$user->connectionsWithPermission('publish'); // honours '*' / 'posts.*'; active only while enforced
 
 // Eloquent scopes on the model / relation.
 $user->connections()->active()->get();
 $user->connections()->expiringSoon(14)->get();
+$user->connections()->withPermission('posts.edit')->get(); // exact, '*', 'posts.*' — any status
 
 // Across every connector.
 Connections::expiring(14)->get();
 
 // Fetch the connected models of a given type (FQCN or morph alias), not the Connection rows.
+// Like isConnectedTo() / hasConnector(), only active links count while enforce_active_on_check is on.
 $user->connectablesOfType(Team::class);   // Collection<Team>
 $team->connectorsOfType(User::class);     // Collection<User>
 ```
+
+The `withPermission` scope matches the exact permission, `*` and trailing segment wildcards
+(`posts.*`, `posts.comments.*`); any other pattern shape (e.g. `posts.*.edit`) is honoured by
+`hasPermission()` / `hasPermissionThroughConnection()` only.
 
 ### Actions
 
@@ -423,6 +460,7 @@ use RoundlyConsulting\Connections\Actions\CreateConnection;
 use RoundlyConsulting\Connections\Actions\GrantPermissions;
 use RoundlyConsulting\Connections\Actions\RevokePermissions;
 use RoundlyConsulting\Connections\Actions\SyncPermissions;
+use RoundlyConsulting\Connections\Actions\ClearPermissions;
 use RoundlyConsulting\Connections\Actions\ExtendConnection;
 use RoundlyConsulting\Connections\Actions\DisconnectConnection;
 use RoundlyConsulting\Connections\Actions\PruneConnections;
@@ -433,15 +471,17 @@ app(CreateConnection::class)->execute($user, $team, collect(['view']), now()->ad
 app(GrantPermissions::class)->execute($user, $team, 'publish');
 app(RevokePermissions::class)->execute($user, $team, 'publish');
 app(SyncPermissions::class)->execute($user, $team, 'view', 'edit');
+app(ClearPermissions::class)->execute($user, $team);
 app(ExtendConnection::class)->execute($user, $team, now()->addYear());
 app(DisconnectConnection::class)->execute($user, $team);
 app(PruneConnections::class)->execute();
 app(SyncConnections::class)->execute($user, [new SyncTarget($team)]);
 ```
 
-`grant` and `sync` auto-create the connection when none exists. `disconnect`, `revoke`, and
-`extend` throw `RoundlyConsulting\Connections\Exceptions\ConnectionNotFound` when there is no
-connection.
+`grant` and `sync` auto-create the connection when none exists. `disconnect`, `revoke`, `clear`
+and `extend` throw `RoundlyConsulting\Connections\Exceptions\ConnectionNotFound` when there is no
+connection. `CreateConnection` follows the re-connect rules above; an explicit `$status` it cannot
+move to (see `canTransitionTo()`, and never out of `blocked`) throws `InvalidStatusTransition`.
 
 ### Events
 
@@ -484,7 +524,12 @@ the package command:
 php artisan connections:prune
 ```
 
-Laravel's native mass pruning still works too:
+`connections:prune` (and `Connections::prune()`) **soft-deletes** expired connections, so a
+blocked pair stays blocked and `reconnect()` can still restore a link.
+
+Laravel's `model:prune` also works, but differs: it **permanently deletes** expired rows
+(`MassPrunable` force-deletes on a `SoftDeletes` model), including rows `connections:prune`
+already soft-deleted — and a block goes with its row:
 
 ```bash
 php artisan model:prune --model="RoundlyConsulting\Connections\Models\Connection"
@@ -555,11 +600,11 @@ $fake->assertConnectedTimes(1);
 | Manager   | `RoundlyConsulting\Connections\ConnectionManager` (injectable facade root) |
 | Builder   | `RoundlyConsulting\Connections\PendingConnection`                         |
 | Sub-accessor | `RoundlyConsulting\Connections\ConnectionPermissions` (`between()->permissions()`) |
-| Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ExtendConnection`, `PruneConnections`, `AcceptConnection`, `BlockConnection`, `RestoreConnection`, `BulkConnect`, `BulkDisconnect`, `SyncConnections` |
+| Actions   | `Actions\CreateConnection`, `DisconnectConnection`, `GrantPermissions`, `RevokePermissions`, `SyncPermissions`, `ClearPermissions`, `ExtendConnection`, `PruneConnections`, `AcceptConnection`, `BlockConnection`, `RestoreConnection`, `BulkConnect`, `BulkDisconnect`, `SyncConnections` |
 | DTOs      | `DataTransferObjects\ConnectionData`, `PermissionSet`, `SyncResult`, `SyncTarget` |
 | Enum      | `Enums\ConnectionStatus` (`Pending`/`Accepted`/`Blocked`)                 |
 | Events    | `Events\ConnectionCreated`, `ConnectionUpdated`, `ConnectionRemoved`, `ConnectionPermissionsChanged`, `ConnectionInvited`, `ConnectionAccepted`, `ConnectionBlocked`, `ConnectionRestored`, `ConnectionExpiring` |
-| Exceptions| `Exceptions\ConnectionNotFound`, `Exceptions\MissingConnectable`          |
+| Exceptions| `Exceptions\ConnectionNotFound`, `Exceptions\InvalidStatusTransition`, `Exceptions\MissingConnectable` |
 | Commands  | `connections:prune`, `connections:notify-expiring`, `make:connectable`    |
 | Model     | `RoundlyConsulting\Connections\Models\Connection`                         |
 | Trait     | `RoundlyConsulting\Connections\Concerns\HasConnections`                   |
@@ -577,13 +622,15 @@ its domain guard `canTransitionTo()` it ships the standard enum helpers:
 ```php
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 
-ConnectionStatus::values();          // ['pending', 'accepted', 'blocked']
-ConnectionStatus::labels();          // ['Pending', 'Accepted', 'Blocked']
-ConnectionStatus::toOptions();       // ['pending' => 'Pending', ...] for <select>
-ConnectionStatus::options();         // EnumOption DTOs for JS/Inertia selects
+ConnectionStatus::values();          // Collection: ['pending', 'accepted', 'blocked']
+ConnectionStatus::labels();          // Collection: ['Pending', 'Accepted', 'Blocked']
+ConnectionStatus::toOptions();       // Collection: ['pending' => 'Pending', ...] for <select>
+ConnectionStatus::toArray();         // array: the plain-array form of toOptions()
+ConnectionStatus::options();         // Collection<EnumOption> for JS/Inertia selects
 ConnectionStatus::validationRule();  // 'in:pending,accepted,blocked'
 ConnectionStatus::Accepted->readable();       // 'Accepted'
 ConnectionStatus::tryFromLabel('Accepted');   // ConnectionStatus::Accepted
+ConnectionStatus::Pending->canTransitionTo(ConnectionStatus::Accepted); // true
 ```
 
 `enums-for-laravel` is a runtime dependency and is installed automatically.
