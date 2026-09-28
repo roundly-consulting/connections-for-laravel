@@ -85,6 +85,13 @@ ArchPresets::morphColumnsUseTheSeam(__DIR__.'/../database/migrations');
 ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
 
 /**
+ * The one-path rule: HasConnections (and any model) reaches behaviour through
+ * ConnectionManager, never an action — a trait that called an action directly was invisible
+ * to Connections::fake(), which is exactly the bug this package had.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Connections');
+
+/**
  * Replaces `it will not use debugging functions`, which covered dd/dump/ray. The preset
  * adds var_dump and print_r.
  */
