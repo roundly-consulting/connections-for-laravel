@@ -40,6 +40,11 @@ final readonly class RecordingConnectionPermissions extends ConnectionPermission
         return $this->recorded('syncPermissions', parent::sync(...$permissions), $permissions);
     }
 
+    public function clear(): Connection
+    {
+        return $this->recorded('syncPermissions', parent::clear(), []);
+    }
+
     /**
      * @param  array<int|string, string>  $permissions
      */

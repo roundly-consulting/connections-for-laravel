@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Connections;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Collection;
+use RoundlyConsulting\Connections\Actions\ClearPermissions;
 use RoundlyConsulting\Connections\Actions\GrantPermissions;
 use RoundlyConsulting\Connections\Actions\RevokePermissions;
 use RoundlyConsulting\Connections\Actions\SyncPermissions;
@@ -59,11 +60,14 @@ readonly class ConnectionPermissions
     }
 
     /**
-     * Remove every permission from the connection (sugar for `sync()` with none).
+     * Remove every permission from the connection. Never creates one.
+     *
+     * @throws ConnectionNotFound
      */
     public function clear(): Connection
     {
-        return $this->sync();
+        return $this->container->make(ClearPermissions::class)
+            ->execute($this->connector, $this->connectable);
     }
 
     /**
