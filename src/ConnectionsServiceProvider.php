@@ -14,6 +14,7 @@ use RoundlyConsulting\Connections\Support\ConnectionModel;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class ConnectionsServiceProvider extends PackageServiceProvider
 {
@@ -34,16 +35,16 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
                 'Model' => class_basename(ConnectionModel::class()),
                 'Table' => ConnectionModel::table(),
                 'Default status' => self::defaultStatus(),
-                'Access checks' => config('connections.enforce_active_on_check', true) === false
-                    ? 'ADVISORY'
-                    : 'ENFORCED',
+                'Access checks' => Config::boolean('connections.enforce_active_on_check', true)
+                    ? 'ENFORCED'
+                    : 'ADVISORY',
                 'Default expiry' => self::defaultExpiry(),
                 // Permissions are the host's own ability strings — report how many
                 // a new connection starts with, never which ones.
                 'Default permissions' => self::defaultPermissions(),
-                'Gate integration' => (bool) config('connections.register_gate', false) ? 'ON' : 'OFF',
-                'In-request cache' => (bool) config('connections.cache.enabled', true) ? 'ON' : 'OFF',
-                'Events' => (bool) config('connections.events.enabled', true) ? 'ON' : 'OFF',
+                'Gate integration' => Config::boolean('connections.register_gate') ? 'ON' : 'OFF',
+                'In-request cache' => Config::boolean('connections.cache.enabled', true) ? 'ON' : 'OFF',
+                'Events' => Config::boolean('connections.events.enabled', true) ? 'ON' : 'OFF',
             ]);
     }
 
@@ -77,7 +78,7 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
      */
     private function registerGate(): void
     {
-        if (! (bool) config('connections.register_gate', false)) {
+        if (! Config::boolean('connections.register_gate')) {
             return;
         }
 
@@ -108,7 +109,7 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
         $expiry = config('connections.expiry.default');
 
         return match (true) {
-            is_int($expiry) => $expiry.'s',
+            is_int($expiry), is_string($expiry) && ctype_digit(trim($expiry)) => trim((string) $expiry).'s',
             is_string($expiry) && $expiry !== '' => $expiry,
             default => 'NEVER',
         };

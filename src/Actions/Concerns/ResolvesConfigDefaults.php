@@ -35,7 +35,8 @@ trait ResolvesConfigDefaults
 
     /**
      * Apply config('connections.expiry.default') only when no expiry was given.
-     * Accepts a relative string ("30 days") or an integer of seconds.
+     * Accepts a relative string ("30 days") or seconds — an integer, or a
+     * numeric string as it arrives from env().
      */
     protected function resolveExpiry(?CarbonInterface $expiresAt): ?CarbonInterface
     {
@@ -44,6 +45,10 @@ trait ResolvesConfigDefaults
         }
 
         $default = config('connections.expiry.default');
+
+        if (is_string($default) && ctype_digit(trim($default))) {
+            $default = (int) trim($default);
+        }
 
         if (is_int($default)) {
             return Carbon::now()->addSeconds($default);

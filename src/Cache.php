@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Connections;
 
 use Illuminate\Container\Container;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * @internal flush it through `Connections::flushCache()`.
@@ -27,7 +28,7 @@ final class Cache
 
     public static function enabled(): bool
     {
-        return (bool) config('connections.cache.enabled', true);
+        return Config::boolean('connections.cache.enabled', true);
     }
 
     public static function keyFor(Connectable $connector, Connectable $connectable): string

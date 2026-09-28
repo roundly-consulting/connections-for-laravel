@@ -16,6 +16,7 @@ use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\Support\ConnectionModel;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * Gives an Eloquent model the ability to form connections to other models,
@@ -345,7 +346,7 @@ trait HasConnections
 
     private function enforceActive(): bool
     {
-        return (bool) config('connections.enforce_active_on_check', true);
+        return Config::boolean('connections.enforce_active_on_check', true);
     }
 
     private function resolveMorphType(string $class): string
