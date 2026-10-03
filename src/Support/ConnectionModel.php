@@ -11,10 +11,10 @@ use RoundlyConsulting\PackageToolkit\Support\ModelResolver;
 /**
  * Resolves the Eloquent model backing connections from `connections.model`.
  *
- * The toolkit's ModelResolver validates that the configured value is a real
- * Eloquent model. This package's documented contract is that a misconfigured
- * value never takes an app down — anything that is not a Connection (so it
- * could not answer the package's queries) falls back to the packaged model.
+ * The toolkit's ModelResolver returns the packaged {@see Connection} when the key
+ * is absent and otherwise requires a Connection or a subclass of it; anything else
+ * (a typo, a non-model, an unrelated model that could not answer the package's
+ * queries) throws its InvalidConfigurationException naming the key.
  */
 final class ConnectionModel
 {
@@ -23,13 +23,7 @@ final class ConnectionModel
      */
     public static function class(): string
     {
-        try {
-            $model = ModelResolver::for('connections.model', Connection::class);
-        } catch (InvalidConfigurationException) {
-            return Connection::class;
-        }
-
-        return is_a($model, Connection::class, true) ? $model : Connection::class;
+        return ModelResolver::for('connections.model', Connection::class);
     }
 
     /**

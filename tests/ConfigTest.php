@@ -5,6 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 test('it ships sensible config defaults', function (): void {
     expect(config('connections.model'))->toBe(Connection::class)
@@ -22,26 +23,27 @@ test('it ships sensible config defaults', function (): void {
 // host's model events (permissions #31). The replacement swaps before boot and asserts the
 // concrete class plus a counted `created` event.
 //
-// The fall-back cases below stay: they assert this package's *documented* contract that a
-// misconfigured model never takes an app down, which is domain behaviour, not machinery.
+// A misconfigured model stops the app with a message naming the key: silently swapping in
+// the packaged model would hide the host's mistake behind wrong-class rows.
 
-test('an invalid model config falls back to the default model', function (): void {
+test('an invalid model config throws instead of falling back to the default model', function (): void {
     config()->set('connections.model', 'not-a-class');
 
     $user = User::create();
     $team = Team::create();
 
-    $connection = $user->connectTo($team, ['view']);
-
-    expect($connection)->toBeInstanceOf(Connection::class);
+    expect(fn (): Connection => $user->connectTo($team, ['view']))->toThrow(
+        InvalidConfigurationException::class,
+        'Configuration value [connections.model] must be a class-string of ['.Connection::class.'], [not-a-class] given.',
+    );
 });
 
-test('the trait relation falls back to the default model when config is invalid', function (): void {
+test('the trait relation throws when the model config is invalid', function (): void {
     $user = User::create();
     $team = Team::create();
     $user->connectTo($team, ['view']);
 
     config()->set('connections.model', 'not-a-class');
 
-    expect($user->connections()->first())->toBeInstanceOf(Connection::class);
+    expect(fn (): mixed => $user->connections()->first())->toThrow(InvalidConfigurationException::class, '[connections.model]');
 });
