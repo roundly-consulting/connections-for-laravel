@@ -116,21 +116,27 @@ return [
 | Key                       | Type            | Default             | Env                                | Purpose |
 |---------------------------|-----------------|---------------------|------------------------------------|---------|
 | `model`                   | `class-string`  | `Connection::class` | —                                  | Model class used when reading and writing connections. |
-| `table`                   | `string`        | `connections`       | `CONNECTIONS_TABLE`                | Table that stores connections; read by the migration. |
+| `table`                   | `string`        | `connections`       | `CONNECTIONS_TABLE`                | Table that stores connections; read by the migration. Must be a non-empty string when set. |
 | `key_type`                | `string`        | `bigint`            | `CONNECTIONS_KEY_TYPE`             | Key type of the polymorphic `connector` / `connectable` columns: `bigint`, `uuid` or `ulid` (anything else throws `InvalidConfigurationException`). Read by the migration, so set it before migrating. |
 | `cache.enabled`           | `bool`          | `true`              | `CONNECTIONS_CACHE_ENABLED`        | In-request connection cache, scoped to one request / queued job. Disable to always re-query. |
 | `events.enabled`          | `bool`          | `true`              | `CONNECTIONS_EVENTS_ENABLED`       | Dispatch lifecycle events. |
 | `register_gate`           | `bool`          | `false`             | `CONNECTIONS_REGISTER_GATE`        | Fall a host `Gate` check through to connection permissions. |
-| `default_permissions`     | `list<string>`  | `[]`                | —                                  | Permissions applied when a connection is created with none. An explicit empty set stays empty. |
+| `default_permissions`     | `list<string>`  | `[]`                | —                                  | Permissions applied when a connection is created with none. An explicit empty set stays empty. Must be a list of non-empty permission names. |
 | `default_status`          | `string`        | `accepted`          | `CONNECTIONS_DEFAULT_STATUS`       | Status new connections start in (`pending`/`accepted`/`blocked`); anything else throws `InvalidConfigurationException`. |
 | `enforce_active_on_check` | `bool`          | `true`              | `CONNECTIONS_ENFORCE_ACTIVE_ON_CHECK` | Require accepted + not-expired for access checks. `false` = status and expiry are advisory; any stored connection counts. |
-| `expiry.default`          | `string\|int\|null` | `null`          | `CONNECTIONS_EXPIRY_DEFAULT`       | Default expiry applied when none is given. |
+| `expiry.default`          | `string\|int\|null` | `null`          | `CONNECTIONS_EXPIRY_DEFAULT`       | Default expiry applied when none is given: a positive interval (`30 days`) or a number of seconds ≥ 1. `null` or empty = never. |
 
 Boolean keys read env strings the usual way: `true`/`1`/`on`/`yes` switch a flag on,
 `false`/`0`/`off`/`no` switch it off, and anything else (a typo such as `=disabled`) throws
 `InvalidConfigurationException` instead of quietly reading as the default. `expiry.default` takes
 a relative string (`"30 days"`) or seconds — an integer, or a numeric env string such as
 `CONNECTIONS_EXPIRY_DEFAULT=3600`. It applies to new connections only.
+
+A key that is absent or `null` takes its default. Anything else that doesn't fit throws
+`InvalidConfigurationException` naming the key rather than falling back: an expiry Carbon can't
+parse (`thirty days`), a zero or negative one, a non-string or non-integer expiry, a permission
+list that isn't a list of names, a blank or non-string table. `php artisan about` shows such a
+value as `INVALID`.
 
 ## Usage
 
