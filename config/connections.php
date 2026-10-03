@@ -38,9 +38,9 @@ return [
     |
     | The key type used for the polymorphic connector / connectable columns. Use
     | "uuid" or "ulid" when the models these point at use UUID/ULID primary keys,
-    | otherwise leave it as "bigint". Any unrecognized value falls back to
-    | "bigint". It is fixed when the migration first runs, so choose it before
-    | publishing the migrations.
+    | otherwise leave it as "bigint". Any other value throws an
+    | InvalidConfigurationException when the migration runs. It is fixed when
+    | the migration first runs, so choose it before publishing the migrations.
     |
     | Supported: "bigint", "uuid", "ulid"
     |
@@ -114,7 +114,8 @@ return [
     | The status a connection is created with when none is specified. The
     | default of "accepted" keeps connect() producing immediately-live links.
     | Set to "pending" to model an invitation flow by default. One of:
-    | pending, accepted, blocked.
+    | pending, accepted, blocked; any other value throws an
+    | InvalidConfigurationException.
     |
     */
 

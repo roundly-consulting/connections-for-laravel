@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Connections\DataTransferObjects\PermissionSet;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 trait ResolvesConfigDefaults
 {
@@ -61,18 +62,21 @@ trait ResolvesConfigDefaults
         return null;
     }
 
+    /**
+     * Apply config('connections.default_status') only when no status was given. Unset
+     * means accepted; a value that names no status throws rather than quietly becoming
+     * accepted, so a typo cannot turn an invitation flow into live connections.
+     */
     protected function resolveStatus(?ConnectionStatus $status): ConnectionStatus
     {
         if ($status !== null) {
             return $status;
         }
 
-        $default = config('connections.default_status', ConnectionStatus::Accepted->value);
-
-        if (is_string($default)) {
-            return ConnectionStatus::tryFrom($default) ?? ConnectionStatus::Accepted;
+        if (config('connections.default_status') === null) {
+            return ConnectionStatus::Accepted;
         }
 
-        return ConnectionStatus::Accepted;
+        return Config::enum('connections.default_status', ConnectionStatus::class);
     }
 }

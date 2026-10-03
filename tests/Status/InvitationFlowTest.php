@@ -6,8 +6,10 @@ use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Events\ConnectionInvited;
 use RoundlyConsulting\Connections\Facades\Connections;
+use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 test('invite creates a pending connection and dispatches ConnectionInvited', function (): void {
     $user = User::create();
@@ -82,13 +84,32 @@ test('the default status comes from config', function (): void {
     expect($connection->isPending())->toBeTrue();
 });
 
-test('an invalid default status falls back to accepted', function (): void {
-    config()->set('connections.default_status', 'nonsense');
+test('an unknown default status throws instead of connecting as accepted (strict config)', function (): void {
+    config()->set('connections.default_status', 'pendng');
 
     $user = User::create();
     $team = Team::create();
 
-    $connection = Connections::between($user, $team)->connect();
+    // A typo meant to model an invitation flow must not hand out live, permission-bearing
+    // connections: the strict reader refuses it rather than defaulting to accepted.
+    expect(fn () => Connections::between($user, $team)->connect())
+        ->toThrow(InvalidConfigurationException::class, 'Configuration value [connections.default_status] must be one of [pending, accepted, blocked].');
+
+    expect(Connection::query()->count())->toBe(0);
+});
+
+test('an unset default status connects as accepted', function (): void {
+    config()->set('connections.default_status', null);
+
+    $connection = Connections::between(User::create(), Team::create())->connect();
 
     expect($connection->isAccepted())->toBeTrue();
+});
+
+test('a default status given as an enum case is honoured', function (): void {
+    config()->set('connections.default_status', ConnectionStatus::Pending);
+
+    $connection = Connections::between(User::create(), Team::create())->connect();
+
+    expect($connection->isPending())->toBeTrue();
 });
