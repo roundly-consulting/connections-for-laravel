@@ -93,7 +93,7 @@ test('an unknown default status throws instead of connecting as accepted (strict
     // A typo meant to model an invitation flow must not hand out live, permission-bearing
     // connections: the strict reader refuses it rather than defaulting to accepted.
     expect(fn () => Connections::between($user, $team)->connect())
-        ->toThrow(InvalidConfigurationException::class, 'Configuration value [connections.default_status] must be one of [pending, accepted, blocked].');
+        ->toThrow(InvalidConfigurationException::class, 'Configuration value [connections.default_status] must be one of [pending, accepted, blocked], [pendng] given.');
 
     expect(Connection::query()->count())->toBe(0);
 });
