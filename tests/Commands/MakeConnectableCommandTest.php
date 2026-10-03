@@ -4,13 +4,23 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\File;
 
+/*
+ * The generator writes into app/Models: a throwaway app/ per test, never the shared testbench
+ * skeleton every parallel process boots from. The app path is read when the command runs, so
+ * pointing it here is enough. The namespace is resolved first — Laravel derives it by
+ * matching app/ against the skeleton's composer.json, which a sandbox would not match.
+ */
 beforeEach(function (): void {
+    $this->app->getNamespace();
+    $this->app->useAppPath($this->sandbox = sys_get_temp_dir().'/connections-make-'.bin2hex(random_bytes(6)));
+
     File::ensureDirectoryExists(app_path('Models'));
 });
 
-afterEach(function (): void {
-    File::delete(app_path('Models/Organisation.php'));
-    File::delete(app_path('Models/User.php'));
+afterEach(fn () => File::deleteDirectory($this->sandbox));
+
+test('it generates into the sandbox, never the shared skeleton', function (): void {
+    expect(app_path('Models'))->toContain('connections-make-');
 });
 
 test('it generates a model with the trait and interface', function (): void {
