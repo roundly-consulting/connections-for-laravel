@@ -6,13 +6,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        $table = config('connections.table');
-        $table = is_string($table) ? $table : 'connections';
+        // Absent means the conventional name; anything present must be a non-empty string.
+        $table = config('connections.table') === null ? 'connections' : Config::requireString('connections.table');
 
         $keyType = KeyType::fromConfig('connections.key_type');
 

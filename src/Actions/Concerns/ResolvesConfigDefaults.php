@@ -8,13 +8,15 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Connections\DataTransferObjects\PermissionSet;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+use RoundlyConsulting\Connections\Support\ConnectionsConfig;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 trait ResolvesConfigDefaults
 {
     /**
      * Apply config('connections.default_permissions') only when the caller
-     * supplied no permission set at all. An explicit (even empty) set wins.
+     * supplied no permission set at all. An explicit (even empty) set wins; a
+     * malformed config list throws.
      */
     protected function resolvePermissions(?PermissionSet $permissions): PermissionSet
     {
@@ -22,22 +24,13 @@ trait ResolvesConfigDefaults
             return $permissions;
         }
 
-        $default = config('connections.default_permissions', []);
-
-        if (! is_array($default)) {
-            return new PermissionSet;
-        }
-
-        return new PermissionSet(array_values(array_map(
-            static fn (mixed $permission): string => (string) $permission,
-            $default,
-        )));
+        return new PermissionSet(ConnectionsConfig::defaultPermissions());
     }
 
     /**
      * Apply config('connections.expiry.default') only when no expiry was given.
      * Accepts a relative string ("30 days") or seconds — an integer, or a
-     * numeric string as it arrives from env().
+     * numeric string as it arrives from env(). Anything else throws.
      */
     protected function resolveExpiry(?CarbonInterface $expiresAt): ?CarbonInterface
     {
@@ -45,21 +38,9 @@ trait ResolvesConfigDefaults
             return $expiresAt;
         }
 
-        $default = config('connections.expiry.default');
+        $default = ConnectionsConfig::defaultExpiry();
 
-        if (is_string($default) && ctype_digit(trim($default))) {
-            $default = (int) trim($default);
-        }
-
-        if (is_int($default)) {
-            return Carbon::now()->addSeconds($default);
-        }
-
-        if (is_string($default) && trim($default) !== '') {
-            return Carbon::now()->add($default);
-        }
-
-        return null;
+        return $default === null ? null : Carbon::now()->add($default);
     }
 
     /**

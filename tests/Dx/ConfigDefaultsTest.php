@@ -6,6 +6,7 @@ use Illuminate\Support\Carbon;
 use RoundlyConsulting\Connections\Facades\Connections;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 afterEach(fn () => Carbon::setTestNow());
 
@@ -88,18 +89,17 @@ test('no default expiry leaves the connection without one', function (): void {
     expect($connection->expires_at)->toBeNull();
 });
 
-test('a non-array default_permissions config is ignored', function (): void {
+test('a non-array default_permissions config throws (strict config)', function (): void {
     config()->set('connections.default_permissions', 'not-an-array');
 
     $user = User::create();
     $team = Team::create();
 
-    $connection = Connections::between($user, $team)->connect();
-
-    expect($connection->permissions->all())->toBe([]);
+    expect(fn () => Connections::between($user, $team)->connect())
+        ->toThrow(InvalidConfigurationException::class, 'Configuration value [connections.default_permissions] must be a list of permission names, [not-an-array] given.');
 });
 
-test('a blank-string default expiry is ignored', function (): void {
+test('a blank-string default expiry means no default expiry', function (): void {
     config()->set('connections.expiry.default', '   ');
 
     $user = User::create();

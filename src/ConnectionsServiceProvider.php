@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use RoundlyConsulting\Connections\Commands\MakeConnectableCommand;
 use RoundlyConsulting\Connections\Commands\NotifyExpiringConnectionsCommand;
 use RoundlyConsulting\Connections\Commands\PruneConnectionsCommand;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Support\ConnectionModel;
+use RoundlyConsulting\Connections\Support\ConnectionsConfig;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 use RoundlyConsulting\PackageToolkit\Support\Config;
@@ -99,27 +103,44 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
 
     private static function defaultStatus(): string
     {
-        $status = config('connections.default_status');
-
-        return is_string($status) && $status !== '' ? $status : 'accepted';
+        return self::orInvalid(static fn (): string => Config::enum('connections.default_status', ConnectionStatus::class, ConnectionStatus::Accepted)->value);
     }
 
     private static function defaultExpiry(): string
     {
-        $expiry = config('connections.expiry.default');
+        return self::orInvalid(static function (): string {
+            if (ConnectionsConfig::defaultExpiry() === null) {
+                return 'NEVER';
+            }
 
-        return match (true) {
-            is_int($expiry), is_string($expiry) && ctype_digit(trim($expiry)) => trim((string) $expiry).'s',
-            is_string($expiry) && $expiry !== '' => $expiry,
-            default => 'NEVER',
-        };
+            // Validated above: an int or a string, rendered as the host wrote it.
+            $raw = trim((string) config('connections.expiry.default'));
+
+            return ctype_digit($raw) ? $raw.'s' : $raw;
+        });
     }
 
     private static function defaultPermissions(): string
     {
-        $permissions = config('connections.default_permissions', []);
-        $count = is_array($permissions) ? count($permissions) : 0;
+        return self::orInvalid(static function (): string {
+            $count = count(ConnectionsConfig::defaultPermissions());
 
-        return $count === 0 ? 'NONE' : $count.' granted on connect';
+            return $count === 0 ? 'NONE' : $count.' granted on connect';
+        });
+    }
+
+    /**
+     * The value a strict read produces, or INVALID when the host's config is malformed:
+     * `php artisan about` keeps rendering on a broken host, while the real read path throws.
+     *
+     * @param  Closure(): string  $read
+     */
+    private static function orInvalid(Closure $read): string
+    {
+        try {
+            return $read();
+        } catch (InvalidConfigurationException) {
+            return 'INVALID';
+        }
     }
 }

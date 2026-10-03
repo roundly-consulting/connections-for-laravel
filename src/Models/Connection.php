@@ -16,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use RoundlyConsulting\Connections\Database\Factories\ConnectionFactory;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+use RoundlyConsulting\Connections\Support\ConnectionsConfig;
 
 /**
  * @property int $id
@@ -48,9 +49,7 @@ class Connection extends Model
             return $this->table;
         }
 
-        $table = config('connections.table');
-
-        return is_string($table) ? $table : 'connections';
+        return ConnectionsConfig::table();
     }
 
     /** @return array<string, string> */

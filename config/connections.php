@@ -100,7 +100,8 @@ return [
     |
     | Permissions applied to a new connection when the caller supplies none at
     | all. An explicit empty array still means "no permissions" — only an
-    | absent/null permission set falls back to this list.
+    | absent/null permission set falls back to this list. It must be a list of
+    | permission names; anything else throws an InvalidConfigurationException.
     |
     */
 
@@ -142,8 +143,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | When set and the caller supplies no expiry, new connections expire after
-    | this interval. Accepts a relative string ("30 days", "2 weeks") or an
-    | integer number of seconds. Null means connections never expire by default.
+    | this interval. Accepts a positive relative string ("30 days", "2 weeks")
+    | or an integer number of seconds (at least 1). Null (or empty) means
+    | connections never expire by default; anything else throws an
+    | InvalidConfigurationException.
     |
     */
 
