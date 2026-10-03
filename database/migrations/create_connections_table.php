@@ -5,15 +5,15 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use RoundlyConsulting\Connections\Support\ConnectionsConfig;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
-use RoundlyConsulting\PackageToolkit\Support\Config;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // Absent means the conventional name; anything present must be a non-empty string.
-        $table = config('connections.table') === null ? 'connections' : Config::requireString('connections.table');
+        // Not set (absent, null or blank) means the conventional name; anything else must be a string.
+        $table = ConnectionsConfig::table();
 
         $keyType = KeyType::fromConfig('connections.key_type');
 

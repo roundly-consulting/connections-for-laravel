@@ -144,8 +144,8 @@ return [
     |
     | When set and the caller supplies no expiry, new connections expire after
     | this interval. Accepts a positive relative string ("30 days", "2 weeks")
-    | or an integer number of seconds (at least 1). Null (or empty) means
-    | connections never expire by default; anything else throws an
+    | or an integer number of seconds (at least 1). Not set (null or blank)
+    | means connections never expire by default; anything else throws an
     | InvalidConfigurationException.
     |
     */

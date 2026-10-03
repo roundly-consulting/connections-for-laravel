@@ -98,13 +98,13 @@ test('an unknown default status throws instead of connecting as accepted (strict
     expect(Connection::query()->count())->toBe(0);
 });
 
-test('an unset default status connects as accepted', function (): void {
-    config()->set('connections.default_status', null);
+test('an unset default status connects as accepted', function (?string $unset): void {
+    config()->set('connections.default_status', $unset);
 
     $connection = Connections::between(User::create(), Team::create())->connect();
 
     expect($connection->isAccepted())->toBeTrue();
-});
+})->with(['absent' => null, 'blank' => '', 'whitespace' => ' ']);
 
 test('a default status given as an enum case is honoured', function (): void {
     config()->set('connections.default_status', ConnectionStatus::Pending);

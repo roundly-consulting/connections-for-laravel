@@ -12,8 +12,9 @@ use Throwable;
 /**
  * The strict readers behind the connections settings the toolkit has no single reader for.
  *
- * An absent (null) key means the documented default. A present value of the wrong shape
- * throws InvalidConfigurationException naming the key: a typo never falls back silently.
+ * A key that is not set (absent, null or blank: `''` or whitespace, a host's `KEY=`) means
+ * the documented default. A present value of the wrong shape throws
+ * InvalidConfigurationException naming the key: a typo never falls back silently.
  * Before, a default expiry that was neither a string nor an int meant "never expires", a
  * non-array permission list granted nothing, and a non-string table became `connections`.
  *
@@ -26,16 +27,17 @@ final class ConnectionsConfig
     private const string PERMISSIONS = 'connections.default_permissions';
 
     /**
-     * The connections table: `connections` when absent, otherwise a non-empty string.
+     * The connections table: `connections` when not set, otherwise a string.
      */
     public static function table(): string
     {
-        return config('connections.table') === null ? 'connections' : Config::requireString('connections.table');
+        return self::isUnset(config('connections.table')) ? 'connections' : Config::requireString('connections.table');
     }
 
     /**
      * The permissions a new connection gets when the caller supplies none: an empty list when
-     * absent, otherwise a list of non-empty permission names.
+     * not set, otherwise a list of non-empty permission names (a blank name in the list is junk,
+     * not an unset key, and throws).
      *
      * @return list<string>
      */
@@ -43,7 +45,7 @@ final class ConnectionsConfig
     {
         $permissions = config(self::PERMISSIONS);
 
-        if ($permissions === null) {
+        if (self::isUnset($permissions)) {
             return [];
         }
 
@@ -66,7 +68,7 @@ final class ConnectionsConfig
 
     /**
      * The default lifetime of a new connection, or null when connections never expire by
-     * default (absent, or an empty env value).
+     * default (not set: absent, null or blank).
      *
      * A whole number of seconds (an int, or an integer string as env() hands it over) must be
      * at least 1; any other string must be a positive relative interval such as `30 days`.
@@ -76,7 +78,7 @@ final class ConnectionsConfig
     {
         $value = config(self::EXPIRY);
 
-        if ($value === null || (is_string($value) && trim($value) === '')) {
+        if (self::isUnset($value)) {
             return null;
         }
 
@@ -95,6 +97,14 @@ final class ConnectionsConfig
         }
 
         return $interval;
+    }
+
+    /**
+     * Not set: null or blank (`''` or whitespace, a host's `KEY=`), read exactly like absent.
+     */
+    private static function isUnset(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
     }
 
     private static function mustBe(string $key, string $expectation, mixed $value): InvalidConfigurationException

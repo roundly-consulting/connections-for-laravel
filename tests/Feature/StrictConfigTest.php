@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\Connections\Facades\Connections;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\Tests\Team;
@@ -37,7 +38,7 @@ it('refuses a default expiry that is not an interval or a positive number of sec
     'array' => [['30 days']],
 ]);
 
-it('reads a canonical seconds string, an interval and an absent expiry (strict config)', function (): void {
+it('reads a canonical seconds string, an interval and an unset expiry (strict config)', function (?string $unset): void {
     Carbon::setTestNow('2026-10-03 12:00:00');
 
     config()->set('connections.expiry.default', ' 60 ');
@@ -46,13 +47,13 @@ it('reads a canonical seconds string, an interval and an absent expiry (strict c
     config()->set('connections.expiry.default', '2 hours');
     $interval = Connections::between(User::create(), Team::create())->connect();
 
-    config()->set('connections.expiry.default', null);
+    config()->set('connections.expiry.default', $unset);
     $never = Connections::between(User::create(), Team::create())->connect();
 
     expect($seconds->expires_at?->toDateTimeString())->toBe('2026-10-03 12:01:00')
         ->and($interval->expires_at?->toDateTimeString())->toBe('2026-10-03 14:00:00')
         ->and($never->expires_at)->toBeNull();
-});
+})->with(['absent' => null, 'blank' => '', 'whitespace' => ' ']);
 
 it('refuses a default permission list that is not a list of names (strict config)', function (mixed $permissions): void {
     config()->set('connections.default_permissions', $permissions);
@@ -67,33 +68,44 @@ it('refuses a default permission list that is not a list of names (strict config
     'a nested list' => [[['view']]],
 ]);
 
-it('grants nothing when the default permission list is absent (strict config)', function (): void {
-    config()->set('connections.default_permissions', null);
+it('grants nothing when the default permission list is not set (strict config)', function (?string $unset): void {
+    config()->set('connections.default_permissions', $unset);
 
     expect(Connections::between(User::create(), Team::create())->connect()->permissions->all())->toBe([]);
-});
+})->with(['absent' => null, 'blank' => '', 'whitespace' => ' ']);
 
-it('refuses a blank or non-string table (strict config)', function (mixed $table): void {
+it('refuses a non-string table (strict config)', function (mixed $table): void {
     config()->set('connections.table', $table);
 
     expect(fn () => (new Connection)->getTable())
         ->toThrow(InvalidConfigurationException::class, 'connections.table');
-})->with(['blank' => '', 'whitespace' => '  ', 'array' => [['connections']], 'integer' => 42]);
+})->with(['array' => [['connections']], 'integer' => 42]);
 
-it('uses the conventional table when none is configured (strict config)', function (): void {
-    config()->set('connections.table', null);
+it('uses the conventional table when none is set (strict config)', function (?string $unset): void {
+    config()->set('connections.table', $unset);
 
     expect((new Connection)->getTable())->toBe('connections');
-});
+})->with(['absent' => null, 'blank' => '', 'whitespace' => '  ']);
 
-it('refuses to migrate onto a blank table name (strict config)', function (): void {
-    config()->set('connections.table', '');
+it('refuses to migrate onto a non-string table name (strict config)', function (): void {
+    config()->set('connections.table', ['connections']);
 
     expect(function (): void {
         $migration = require __DIR__.'/../../database/migrations/create_connections_table.php';
         $migration->up();
     })->toThrow(InvalidConfigurationException::class, 'connections.table');
 });
+
+it('migrates onto the conventional table when none is set (strict config)', function (?string $unset): void {
+    config()->set('connections.table', $unset);
+
+    Schema::dropIfExists('connections');
+
+    $migration = require __DIR__.'/../../database/migrations/create_connections_table.php';
+    $migration->up();
+
+    expect(Schema::hasTable('connections'))->toBeTrue();
+})->with(['absent' => null, 'blank' => '', 'whitespace' => '  ']);
 
 it('keeps the about section rendering on a malformed host config (strict config)', function (): void {
     config()->set('connections.default_status', 'acepted');

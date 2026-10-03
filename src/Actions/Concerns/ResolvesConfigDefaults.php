@@ -44,20 +44,12 @@ trait ResolvesConfigDefaults
     }
 
     /**
-     * Apply config('connections.default_status') only when no status was given. Unset
-     * means accepted; a value that names no status throws rather than quietly becoming
-     * accepted, so a typo cannot turn an invitation flow into live connections.
+     * Apply config('connections.default_status') only when no status was given. Not set
+     * (absent, null or blank) means accepted; a value that names no status throws rather than
+     * quietly becoming accepted, so a typo cannot turn an invitation flow into live connections.
      */
     protected function resolveStatus(?ConnectionStatus $status): ConnectionStatus
     {
-        if ($status !== null) {
-            return $status;
-        }
-
-        if (config('connections.default_status') === null) {
-            return ConnectionStatus::Accepted;
-        }
-
-        return Config::enum('connections.default_status', ConnectionStatus::class);
+        return $status ?? Config::enum('connections.default_status', ConnectionStatus::class, ConnectionStatus::Accepted);
     }
 }
