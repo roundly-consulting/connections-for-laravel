@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use RoundlyConsulting\Connections\Cache;
 use RoundlyConsulting\Connections\Exceptions\ConnectionNotFound;
 use RoundlyConsulting\Connections\Models\Connection;
@@ -130,3 +131,19 @@ test('permissionsThroughConnection returns an empty collection without a connect
 
     expect($user->permissionsThroughConnection($team)->all())->toBe([]);
 });
+
+test('regression: isConnectedToAny and hasConnectorFromAny resolve a class name through the morph map', function (): void {
+    Relation::morphMap(['user' => User::class, 'team' => Team::class]);
+
+    $user = User::create();
+    $team = Team::create();
+    $user->connectTo($team);
+
+    // The stored types are the aliases, so a raw class-name compare finds nothing.
+    expect($user->isConnectedToAny(Team::class))->toBeTrue()
+        ->and($user->isConnectedToAny('team'))->toBeTrue()
+        ->and($user->isConnectedToAny(User::class))->toBeFalse()
+        ->and($team->hasConnectorFromAny(User::class))->toBeTrue()
+        ->and($team->hasConnectorFromAny('user'))->toBeTrue()
+        ->and($team->hasConnectorFromAny(Team::class))->toBeFalse();
+})->after(fn () => Relation::morphMap([], false));

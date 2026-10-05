@@ -6,6 +6,11 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Fixed
+
+- `isConnectedToAny()` and `hasConnectorFromAny()` now resolve a class name through the morph
+  map, so they find links stored under an alias.
+
 ## 1.0.0 - 2026-10-03
 
 Initial public release.

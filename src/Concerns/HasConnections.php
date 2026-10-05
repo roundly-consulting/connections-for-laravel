@@ -46,10 +46,13 @@ trait HasConnections
             ->exists();
     }
 
+    /**
+     * Accepts a fully-qualified class name or a registered morph alias.
+     */
     public function isConnectedToAny(string $type): bool
     {
         return $this->connections()
-            ->where('connectable_type', $type)
+            ->where('connectable_type', $this->resolveMorphType($type))
             ->when($this->enforceActive(), fn ($query) => $query->active())
             ->exists();
     }
@@ -63,10 +66,13 @@ trait HasConnections
             ->exists();
     }
 
+    /**
+     * Accepts a fully-qualified class name or a registered morph alias.
+     */
     public function hasConnectorFromAny(string $type): bool
     {
         return $this->connectors()
-            ->where('connector_type', $type)
+            ->where('connector_type', $this->resolveMorphType($type))
             ->when($this->enforceActive(), fn ($query) => $query->active())
             ->exists();
     }
