@@ -42,7 +42,7 @@ final readonly class SyncConnections
 
             $desired = $this->index($targets);
 
-            foreach ($targets as $target) {
+            foreach ($desired as $target) {
                 $connectable = $target->model;
                 $existed = $this->find($connector, $connectable) !== null;
 
@@ -75,22 +75,25 @@ final readonly class SyncConnections
     }
 
     /**
+     * The desired set keyed by pair, one target per model: a model listed twice is
+     * written once, with its last target's attributes.
+     *
      * @param  list<SyncTarget>  $targets
-     * @return array<string, true>
+     * @return array<string, SyncTarget>
      */
     private function index(array $targets): array
     {
         $index = [];
 
         foreach ($targets as $target) {
-            $index[$this->keyFor($target->model)] = true;
+            $index[$this->keyFor($target->model)] = $target;
         }
 
         return $index;
     }
 
     /**
-     * @param  array<string, true>  $desired
+     * @param  array<string, SyncTarget>  $desired
      * @return list<int|string>
      */
     private function detachExtras(Connectable $connector, array $desired): array

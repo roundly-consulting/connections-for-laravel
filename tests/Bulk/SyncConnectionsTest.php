@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
+use RoundlyConsulting\Connections\Events\ConnectionCreated;
 use RoundlyConsulting\Connections\Events\ConnectionRemoved;
+use RoundlyConsulting\Connections\Events\ConnectionUpdated;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
 
@@ -109,4 +111,34 @@ test('a failure mid-sync rolls back the whole reconcile', function (): void {
     }
 
     expect($user->fresh()->isConnectedTo($teamA))->toBeFalse();
+});
+
+test('regression: a duplicated target is attached once, not also reported as updated', function (): void {
+    Event::fake([ConnectionCreated::class, ConnectionUpdated::class]);
+
+    $user = User::create();
+    $team = Team::create();
+
+    $result = $user->syncConnections([$team, $team]);
+
+    expect($result->attached)->toBe([$team->getKey()])
+        ->and($result->updated)->toBe([])
+        ->and($result->detached)->toBe([]);
+
+    Event::assertDispatchedTimes(ConnectionCreated::class, 1);
+    Event::assertNotDispatched(ConnectionUpdated::class);
+});
+
+test('regression: of two targets for one model, the last one wins', function (): void {
+    $user = User::create();
+    $team = Team::create();
+
+    $result = $user->syncConnections([
+        new SyncTarget($team, permissions: ['view']),
+        new SyncTarget($team, permissions: ['edit']),
+    ]);
+
+    expect($result->attached)->toBe([$team->getKey()])
+        ->and($result->updated)->toBe([])
+        ->and($user->permissionsThroughConnection($team)->all())->toBe(['edit']);
 });

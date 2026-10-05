@@ -16,6 +16,8 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 - `Connections::fake()` records `asPending()->connect()`, `asPending()->connectAll()` and a
   plain connect that creates an invitation under `default_status=pending` as `invite`, so
   `assertInvited()` passes and `assertNothingInvited()` fails for them.
+- `sync()` writes a model listed twice only once (its last target wins), so `SyncResult` no
+  longer reports the same id as both attached and updated.
 
 ## 1.0.0 - 2026-10-03
 
