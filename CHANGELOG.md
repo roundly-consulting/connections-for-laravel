@@ -29,6 +29,10 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 - Two concurrent first connects of the same pair on MySQL no longer deadlock (1213): the create
   path locks the pair's row only once it exists, so the losing insert is applied to the winning
   row as documented.
+- Permission writes (`grant()`, `revoke()`, `sync()`, `clear()` and their trait/bulk forms) read
+  and write the row in one transaction on the connection model's database with the row locked,
+  so a concurrent revoke can no longer be undone by a grant, and a grant that loses the create
+  race adds to the winner's permissions instead of overwriting them.
 
 ## 1.0.0 - 2026-10-03
 

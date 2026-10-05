@@ -22,33 +22,39 @@ final readonly class SyncPermissions
 
     /**
      * Replace the connection's permissions with the exact given set,
-     * creating the connection if absent.
+     * creating the connection if absent. Runs in one transaction on the
+     * connection model's database with the row locked.
      */
     public function execute(
         Connectable $connector,
         Connectable $connectable,
         string ...$permissions,
     ): Connection {
-        $connection = $this->find($connector, $connectable);
+        /** @var Connection $connection */
+        $connection = $this->database()->transaction(function () use ($connector, $connectable, $permissions): Connection {
+            $connection = $this->lockLive($connector, $connectable);
 
-        if ($connection === null) {
-            return $this->createConnection->execute(
-                $connector,
-                $connectable,
-                PermissionSet::make(...$permissions)->toCollection(),
-            );
-        }
+            if ($connection === null) {
+                return $this->createConnection->execute(
+                    $connector,
+                    $connectable,
+                    PermissionSet::make(...$permissions)->toCollection(),
+                );
+            }
 
-        $previous = $this->toList($connection->permissions->all());
-        $next = PermissionSet::make(...$permissions);
+            $previous = $this->toList($connection->permissions->all());
+            $next = PermissionSet::make(...$permissions);
 
-        $connection->update(['permissions' => $next->toCollection()]);
+            $connection->update(['permissions' => $next->toCollection()]);
+
+            if ($previous !== $next->all()) {
+                $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
+            }
+
+            return $connection;
+        });
 
         $this->invalidateCache($connector, $connectable);
-
-        if ($previous !== $next->all()) {
-            $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
-        }
 
         return $connection;
     }

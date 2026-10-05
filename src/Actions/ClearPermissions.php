@@ -19,26 +19,33 @@ final readonly class ClearPermissions
     /**
      * Remove every permission from the connection. Unlike SyncPermissions it
      * never creates one: removing permissions from a pair that has no live
-     * connection must not connect it.
+     * connection must not connect it. Runs in one transaction on the
+     * connection model's database with the row locked.
      *
      * @throws ConnectionNotFound
      */
     public function execute(Connectable $connector, Connectable $connectable): Connection
     {
-        $connection = $this->findOrFail($connector, $connectable);
+        /** @var Connection $connection */
+        $connection = $this->database()->transaction(function () use ($connector, $connectable): Connection {
+            $connection = $this->lockLive($connector, $connectable)
+                ?? throw ConnectionNotFound::between($connector, $connectable);
 
-        $previous = array_values(array_map(
-            static fn (mixed $permission): string => (string) $permission,
-            $connection->permissions->all(),
-        ));
+            $previous = array_values(array_map(
+                static fn (mixed $permission): string => (string) $permission,
+                $connection->permissions->all(),
+            ));
 
-        $connection->update(['permissions' => []]);
+            $connection->update(['permissions' => []]);
+
+            if ($previous !== []) {
+                $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, []));
+            }
+
+            return $connection;
+        });
 
         $this->invalidateCache($connector, $connectable);
-
-        if ($previous !== []) {
-            $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, []));
-        }
 
         return $connection;
     }

@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Connections\Actions;
 use RoundlyConsulting\Connections\Actions\Concerns\DispatchesConnectionEvents;
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
+use RoundlyConsulting\Connections\DataTransferObjects\ConnectionData;
 use RoundlyConsulting\Connections\DataTransferObjects\PermissionSet;
 use RoundlyConsulting\Connections\Events\ConnectionPermissionsChanged;
 use RoundlyConsulting\Connections\Models\Connection;
@@ -21,33 +22,43 @@ final readonly class GrantPermissions
     ) {}
 
     /**
-     * Add the given permissions to the connection, creating it if absent.
+     * Add the given permissions to the connection, creating it if absent. The
+     * read-modify-write runs in one transaction on the connection model's
+     * database with the row locked, so a concurrent write to the pair can be
+     * neither lost nor undone.
      */
     public function execute(
         Connectable $connector,
         Connectable $connectable,
         string ...$permissions,
     ): Connection {
-        $connection = $this->find($connector, $connectable);
+        /** @var Connection $connection */
+        $connection = $this->database()->transaction(function () use ($connector, $connectable, $permissions): Connection {
+            $connection = $this->lockLive($connector, $connectable);
 
-        if ($connection === null) {
-            return $this->createConnection->execute(
-                $connector,
-                $connectable,
-                PermissionSet::make(...$permissions)->toCollection(),
-            );
-        }
+            if ($connection === null) {
+                // Should a concurrent writer create the pair first, the create
+                // path adds to its permissions instead of overwriting them.
+                return $this->createConnection->executeData(
+                    ConnectionData::fromModels($connector, $connectable, PermissionSet::make(...$permissions), mergePermissions: true),
+                    $connector,
+                    $connectable,
+                );
+            }
 
-        $previous = $this->toList($connection->permissions->all());
-        $next = (new PermissionSet($previous))->add(...$permissions);
+            $previous = $this->toList($connection->permissions->all());
+            $next = (new PermissionSet($previous))->add(...$permissions);
 
-        $connection->update(['permissions' => $next->toCollection()]);
+            $connection->update(['permissions' => $next->toCollection()]);
+
+            if ($previous !== $next->all()) {
+                $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
+            }
+
+            return $connection;
+        });
 
         $this->invalidateCache($connector, $connectable);
-
-        if ($previous !== $next->all()) {
-            $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
-        }
 
         return $connection;
     }

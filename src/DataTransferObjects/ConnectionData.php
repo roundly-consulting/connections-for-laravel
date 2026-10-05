@@ -14,7 +14,10 @@ final readonly class ConnectionData
     /**
      * A null $permissions means "the caller supplied none" — the create action
      * then applies config('connections.default_permissions'). An explicit
-     * (even empty) PermissionSet is honoured as-is.
+     * (even empty) PermissionSet is honoured as-is. With $mergePermissions a
+     * write that lands on the pair's live row adds them to its stored set
+     * instead of replacing it — grant semantics, so a grant that loses the
+     * create race to a concurrent writer keeps what that writer stored.
      *
      * @param  array<string, mixed>|null  $meta
      */
@@ -28,6 +31,7 @@ final readonly class ConnectionData
         public ?ConnectionStatus $status = null,
         public ?array $meta = null,
         public bool $replaceMeta = false,
+        public bool $mergePermissions = false,
     ) {}
 
     /**
@@ -42,6 +46,7 @@ final readonly class ConnectionData
         ?ConnectionStatus $status = null,
         ?array $meta = null,
         bool $replaceMeta = false,
+        bool $mergePermissions = false,
     ): self {
         return new self(
             connectorType: $connector->getMorphClass(),
@@ -53,6 +58,7 @@ final readonly class ConnectionData
             status: $status,
             meta: $meta,
             replaceMeta: $replaceMeta,
+            mergePermissions: $mergePermissions,
         );
     }
 

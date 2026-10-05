@@ -13,6 +13,7 @@ use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConfigDefaults;
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\DataTransferObjects\ConnectionData;
+use RoundlyConsulting\Connections\DataTransferObjects\PermissionSet;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Events\ConnectionCreated;
 use RoundlyConsulting\Connections\Events\ConnectionInvited;
@@ -35,7 +36,8 @@ final readonly class CreateConnection
      *   config default (`default_permissions`, `expiry.default`, `default_status`).
      * - **Existing live row** — only what the caller supplies changes: a null
      *   permissions / expiry / status / meta keeps the stored value (meta is
-     *   merged unless $replaceMeta). An explicit status must pass
+     *   merged unless $replaceMeta; permissions are replaced unless the data
+     *   asks to merge them). An explicit status must pass
      *   ConnectionStatus::canTransitionTo(), and a block is never lifted here —
      *   only AcceptConnection may.
      * - **Soft-deleted row** (after a disconnect or prune it still holds the
@@ -122,7 +124,7 @@ final readonly class CreateConnection
     private function applyTo(Connection $connection, ConnectionData $data): array
     {
         if (! $connection->trashed()) {
-            $this->update($connection, $data);
+            $this->update($connection, $data, $data->mergePermissions);
 
             return [$connection, [new ConnectionUpdated($connection)]];
         }
@@ -147,11 +149,12 @@ final readonly class CreateConnection
     }
 
     /**
-     * Change only what the caller supplied.
+     * Change only what the caller supplied. Supplied permissions replace the
+     * stored set, or are added to it when $mergePermissions.
      *
      * @throws InvalidStatusTransition
      */
-    private function update(Connection $connection, ConnectionData $data): void
+    private function update(Connection $connection, ConnectionData $data, bool $mergePermissions = false): void
     {
         if ($data->status !== null) {
             $this->guardConnectTransition($connection->status, $data->status);
@@ -160,7 +163,11 @@ final readonly class CreateConnection
         }
 
         if ($data->permissions !== null) {
-            $connection->permissions = $data->permissions->toCollection();
+            $connection->permissions = $mergePermissions
+                ? PermissionSet::fromIterable($connection->permissions->map(static fn (mixed $permission): string => (string) $permission))
+                    ->add(...$data->permissions->all())
+                    ->toCollection()
+                : $data->permissions->toCollection();
         }
 
         if ($data->expiresAt !== null) {

@@ -18,7 +18,9 @@ final readonly class RevokePermissions
     use ResolvesConnections;
 
     /**
-     * Remove the given permissions from the connection.
+     * Remove the given permissions from the connection. The read-modify-write
+     * runs in one transaction on the connection model's database with the row
+     * locked, so a concurrent grant cannot bring a revoked permission back.
      *
      * @throws ConnectionNotFound
      */
@@ -27,18 +29,24 @@ final readonly class RevokePermissions
         Connectable $connectable,
         string ...$permissions,
     ): Connection {
-        $connection = $this->findOrFail($connector, $connectable);
+        /** @var Connection $connection */
+        $connection = $this->database()->transaction(function () use ($connector, $connectable, $permissions): Connection {
+            $connection = $this->lockLive($connector, $connectable)
+                ?? throw ConnectionNotFound::between($connector, $connectable);
 
-        $previous = $this->toList($connection->permissions->all());
-        $next = (new PermissionSet($previous))->remove(...$permissions);
+            $previous = $this->toList($connection->permissions->all());
+            $next = (new PermissionSet($previous))->remove(...$permissions);
 
-        $connection->update(['permissions' => $next->toCollection()]);
+            $connection->update(['permissions' => $next->toCollection()]);
+
+            if ($previous !== $next->all()) {
+                $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
+            }
+
+            return $connection;
+        });
 
         $this->invalidateCache($connector, $connectable);
-
-        if ($previous !== $next->all()) {
-            $this->dispatch(new ConnectionPermissionsChanged($connection, $previous, $next->all()));
-        }
 
         return $connection;
     }

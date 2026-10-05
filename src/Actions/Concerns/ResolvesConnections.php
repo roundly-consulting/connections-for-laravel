@@ -100,6 +100,23 @@ trait ResolvesConnections
         return $this->findAnyForUpdate($connector, $connectable);
     }
 
+    /**
+     * The pair's live row locked for the rest of the transaction, or null when
+     * it has none — probing without a lock first, for the reason
+     * lockExisting() gives.
+     */
+    protected function lockLive(Connectable $connector, Connectable $connectable): ?Connection
+    {
+        if (! $this->pair($connector, $connectable)->exists()) {
+            return null;
+        }
+
+        /** @var Connection|null $connection */
+        $connection = $this->pair($connector, $connectable)->lockForUpdate()->first();
+
+        return $connection;
+    }
+
     protected function invalidateCache(Connectable $connector, Connectable $connectable): void
     {
         Cache::forget(Cache::keyFor($connector, $connectable));
