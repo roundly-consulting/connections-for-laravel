@@ -3,7 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use RoundlyConsulting\Connections\Enums\ConnectionStatus;
+use RoundlyConsulting\Connections\Facades\Connections;
 use RoundlyConsulting\Connections\Models\Connection;
+use RoundlyConsulting\Connections\Tests\Team;
+use RoundlyConsulting\Connections\Tests\User;
 
 test('it returns prunable query', function () {
     Carbon::setTestNow('2023-09-08 09:30:00');
@@ -12,7 +16,7 @@ test('it returns prunable query', function () {
 
     expect($prunableQuery)
         ->toBe(
-            'select * from "connections" where "expires_at" <= \'2023-09-08 09:30:00\' and "connections"."deleted_at" is null'
+            'select * from "connections" where "expires_at" <= \'2023-09-08 09:30:00\' and "status" != \'blocked\' and "connections"."deleted_at" is null'
         );
 
     Carbon::setTestNow();
@@ -27,6 +31,28 @@ test('it prunes expired connections', function () {
     $this->artisan('model:prune', ['--model' => [Connection::class]])->run();
 
     expect(Connection::query()->count())->toBe(1);
+});
+
+test('regression: model:prune keeps an expired block, so a later connect stays blocked', function () {
+    $user = User::create();
+    $blocked = Team::create();
+    $accepted = Team::create();
+
+    Connections::between($user, $blocked)->connect();
+    Connections::between($user, $blocked)->block();
+    Connections::between($user, $accepted)->connect();
+    Connection::query()->update(['expires_at' => now()->subDay()]);
+
+    $this->artisan('model:prune', ['--model' => [Connection::class]])->run();
+
+    // The expired accepted row is still pruned; the expired block is not.
+    expect(Connection::query()->withTrashed()->where('connectable_id', $accepted->getKey())->count())->toBe(0)
+        ->and(Connection::query()->withTrashed()->where('connectable_id', $blocked->getKey())->count())->toBe(1);
+
+    $connection = Connections::between($user, $blocked)->connect();
+
+    expect($connection->status)->toBe(ConnectionStatus::Blocked)
+        ->and($user->isConnectedTo($blocked))->toBeFalse();
 });
 
 test('it reports whether a permission is granted', function () {

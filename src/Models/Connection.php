@@ -73,11 +73,17 @@ class Connection extends Model
      * `newQuery()` says that plainly instead of routing it through a static call that
      * reads like the seam bypass it is not.
      *
+     * Blocked rows are never prunable: `MassPrunable` force-deletes soft-deletable
+     * models, so pruning an expired block would erase it and let the pair connect
+     * afresh. A block outlives its expiry until accept() lifts it.
+     *
      * @return Builder<static>
      */
     public function prunable(): Builder
     {
-        return $this->newQuery()->where('expires_at', '<=', now());
+        return $this->newQuery()
+            ->where('expires_at', '<=', now())
+            ->where('status', '!=', ConnectionStatus::Blocked->value);
     }
 
     /** @return MorphTo<Model, $this> */

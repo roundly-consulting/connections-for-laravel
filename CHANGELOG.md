@@ -11,6 +11,8 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 - `isConnectedToAny()` and `hasConnectorFromAny()` now resolve a class name through the morph
   map, so they find links stored under an alias.
 - `connectAll()` honours `replaceMeta()` instead of merging the staged meta into the stored meta.
+- Laravel's `model:prune` no longer force-deletes expired blocked connections, so a block
+  survives pruning and the pair cannot connect afresh afterwards.
 
 ## 1.0.0 - 2026-10-03
 
