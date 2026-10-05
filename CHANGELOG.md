@@ -26,6 +26,9 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
   `ConnectionPermissionsChanged`) now implement `ShouldDispatchAfterCommit`: inside a transaction
   they fire once it commits and never for a write that is rolled back (a failed `connectAll()` /
   `sync()`, or a host transaction).
+- Two concurrent first connects of the same pair on MySQL no longer deadlock (1213): the create
+  path locks the pair's row only once it exists, so the losing insert is applied to the winning
+  row as documented.
 
 ## 1.0.0 - 2026-10-03
 

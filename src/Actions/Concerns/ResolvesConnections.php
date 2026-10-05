@@ -36,15 +36,24 @@ trait ResolvesConnections
         return $this->query()->getModel()->getConnection();
     }
 
-    protected function find(Connectable $connector, Connectable $connectable): ?Connection
+    /**
+     * The pair's rows (live only, until a caller widens it).
+     *
+     * @return Builder<Connection>
+     */
+    protected function pair(Connectable $connector, Connectable $connectable): Builder
     {
-        /** @var Connection|null $connection */
-        $connection = $this->query()
+        return $this->query()
             ->where('connector_id', $connector->getKey())
             ->where('connector_type', $connector->getMorphClass())
             ->where('connectable_id', $connectable->getKey())
-            ->where('connectable_type', $connectable->getMorphClass())
-            ->first();
+            ->where('connectable_type', $connectable->getMorphClass());
+    }
+
+    protected function find(Connectable $connector, Connectable $connectable): ?Connection
+    {
+        /** @var Connection|null $connection */
+        $connection = $this->pair($connector, $connectable)->first();
 
         return $connection;
     }
@@ -58,13 +67,7 @@ trait ResolvesConnections
     protected function findTrashed(Connectable $connector, Connectable $connectable): ?Connection
     {
         /** @var Connection|null $connection */
-        $connection = $this->query()
-            ->onlyTrashed()
-            ->where('connector_id', $connector->getKey())
-            ->where('connector_type', $connector->getMorphClass())
-            ->where('connectable_id', $connectable->getKey())
-            ->where('connectable_type', $connectable->getMorphClass())
-            ->first();
+        $connection = $this->pair($connector, $connectable)->onlyTrashed()->first();
 
         return $connection;
     }
@@ -76,16 +79,25 @@ trait ResolvesConnections
     protected function findAnyForUpdate(Connectable $connector, Connectable $connectable): ?Connection
     {
         /** @var Connection|null $connection */
-        $connection = $this->query()
-            ->withTrashed()
-            ->where('connector_id', $connector->getKey())
-            ->where('connector_type', $connector->getMorphClass())
-            ->where('connectable_id', $connectable->getKey())
-            ->where('connectable_type', $connectable->getMorphClass())
-            ->lockForUpdate()
-            ->first();
+        $connection = $this->pair($connector, $connectable)->withTrashed()->lockForUpdate()->first();
 
         return $connection;
+    }
+
+    /**
+     * Like findAnyForUpdate(), but locks only a row that exists: a plain read
+     * probes first. On InnoDB a locking read that matches nothing takes a gap
+     * lock, gap locks never conflict with each other, and two writers holding
+     * one each then deadlock on the inserts that follow (MySQL 1213) instead
+     * of one losing on the unique index.
+     */
+    protected function lockExisting(Connectable $connector, Connectable $connectable): ?Connection
+    {
+        if (! $this->pair($connector, $connectable)->withTrashed()->exists()) {
+            return null;
+        }
+
+        return $this->findAnyForUpdate($connector, $connectable);
     }
 
     protected function invalidateCache(Connectable $connector, Connectable $connectable): void

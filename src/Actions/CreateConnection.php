@@ -92,7 +92,7 @@ final readonly class CreateConnection
      */
     private function write(ConnectionData $data, Connectable $connector, Connectable $connectable): array
     {
-        $existing = $this->findAnyForUpdate($connector, $connectable);
+        $existing = $this->lockExisting($connector, $connectable);
 
         if ($existing !== null) {
             return $this->applyTo($existing, $data);
