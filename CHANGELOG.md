@@ -21,6 +21,11 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 - `connectAll()`, `disconnectAll()` and `sync()` open their transaction on the connection
   model's database rather than the app default, so a failure rolls the whole batch back when
   `connections.model` lives on another connection.
+- Connection events (`ConnectionCreated`, `ConnectionUpdated`, `ConnectionRemoved`,
+  `ConnectionRestored`, `ConnectionInvited`, `ConnectionAccepted`, `ConnectionBlocked`,
+  `ConnectionPermissionsChanged`) now implement `ShouldDispatchAfterCommit`: inside a transaction
+  they fire once it commits and never for a write that is rolled back (a failed `connectAll()` /
+  `sync()`, or a host transaction).
 
 ## 1.0.0 - 2026-10-03
 

@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Events;
 
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final readonly class ConnectionBlocked
+/**
+ * Dispatched after the surrounding transaction commits, never for a rolled-back write.
+ */
+final readonly class ConnectionBlocked implements ShouldDispatchAfterCommit
 {
     public function __construct(
         public Connection $connection,

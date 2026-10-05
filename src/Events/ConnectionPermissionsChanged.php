@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Events;
 
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use RoundlyConsulting\Connections\Models\Connection;
 
-final class ConnectionPermissionsChanged
+/**
+ * Dispatched after the surrounding transaction commits, never for a rolled-back write.
+ */
+final class ConnectionPermissionsChanged implements ShouldDispatchAfterCommit
 {
     /**
      * @param  list<string>  $previous
