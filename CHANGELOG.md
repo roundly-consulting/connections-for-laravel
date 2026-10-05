@@ -6,6 +6,25 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-05
+
+### Added
+
+- `ConnectionData` (its constructor and `fromModels()`) takes an optional `mergePermissions` flag,
+  `false` by default: a write that lands on the pair's live row adds its permissions to the stored
+  set instead of replacing it.
+- `BulkConnect::execute()` takes an optional trailing `replaceMeta` flag, `false` by default, so a
+  direct call can overwrite the stored meta the way `connectAll()` after `replaceMeta()` does.
+- `PendingConnection::storedConnection()` is now `protected`, so a `PendingConnection` subclass can
+  read the pair's stored connection.
+
+### Changed
+
+- Maintenance: CI also runs the test suite against MySQL 8, alongside SQLite and Postgres.
+- Maintenance: `composer.json` `homepage` and `support.docs` link to the package documentation.
+- Documentation: the README hero image uses an absolute URL, so it renders on Packagist and other
+  sites.
+
 ### Fixed
 
 - `isConnectedToAny()` and `hasConnectorFromAny()` now resolve a class name through the morph
