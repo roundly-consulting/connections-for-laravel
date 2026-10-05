@@ -354,7 +354,7 @@ class PendingConnection
     /**
      * The connector's live connection to the connectable in any status.
      */
-    private function storedConnection(Connectable $connectable): ?Connection
+    protected function storedConnection(Connectable $connectable): ?Connection
     {
         /** @var Connection|null $connection */
         $connection = $this->connector->connections()

@@ -13,6 +13,9 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 - `connectAll()` honours `replaceMeta()` instead of merging the staged meta into the stored meta.
 - Laravel's `model:prune` no longer force-deletes expired blocked connections, so a block
   survives pruning and the pair cannot connect afresh afterwards.
+- `Connections::fake()` records `asPending()->connect()`, `asPending()->connectAll()` and a
+  plain connect that creates an invitation under `default_status=pending` as `invite`, so
+  `assertInvited()` passes and `assertNothingInvited()` fails for them.
 
 ## 1.0.0 - 2026-10-03
 

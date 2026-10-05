@@ -11,6 +11,7 @@ use RoundlyConsulting\Connections\ConnectionPermissions;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncResult;
 use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
+use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
 use RoundlyConsulting\Connections\PendingConnection;
 
@@ -30,11 +31,23 @@ final class RecordingPendingConnection extends PendingConnection
         parent::__construct($container, $connector, $connectable);
     }
 
+    /**
+     * Recorded as an invitation when it created or re-staged one — a pending status was
+     * staged, or nothing was and a new pair took a pending `default_status` — so
+     * `assertInvited()` sees `asPending()->connect()` the same as `invite()`.
+     */
     public function connect(): Connection
     {
+        $mayInvite = $this->mayInvite($this->resolveConnectable());
+
         $connection = parent::connect();
 
-        $this->fake->record(new RecordedOperation('connect', $this->connector, $this->connectable, $this->permissions ?? []));
+        $this->fake->record(new RecordedOperation(
+            $this->connectVerb($mayInvite, $connection),
+            $this->connector,
+            $this->connectable,
+            $this->permissions ?? [],
+        ));
 
         return $connection;
     }
@@ -118,9 +131,18 @@ final class RecordingPendingConnection extends PendingConnection
      */
     public function connectAll(): Collection
     {
+        $mayInvite = array_map(fn (Connectable $connectable): bool => $this->mayInvite($connectable), $this->connectables);
+
         $connections = parent::connectAll();
 
-        $this->recordEachTarget('connect', $this->permissions ?? []);
+        foreach ($this->connectables as $index => $connectable) {
+            $this->fake->record(new RecordedOperation(
+                $this->connectVerb($mayInvite[$index], $connections->get($index)),
+                $this->connector,
+                $connectable,
+                $this->permissions ?? [],
+            ));
+        }
 
         return $connections;
     }
@@ -154,6 +176,22 @@ final class RecordingPendingConnection extends PendingConnection
         $this->recordEachTarget('revoke', array_values($permissions));
 
         return $connections;
+    }
+
+    /**
+     * Whether connecting to the connectable can create an invitation: a pending status
+     * is staged, or none is and the pair has no live row (the configured default then
+     * decides). Read before the write, which is what tells a new pair from an update.
+     */
+    private function mayInvite(Connectable $connectable): bool
+    {
+        return $this->status === ConnectionStatus::Pending
+            || ($this->status === null && $this->storedConnection($connectable) === null);
+    }
+
+    private function connectVerb(bool $mayInvite, ?Connection $connection): string
+    {
+        return $mayInvite && $connection?->isPending() === true ? 'invite' : 'connect';
     }
 
     private function recorded(string $verb, Connection $connection): Connection

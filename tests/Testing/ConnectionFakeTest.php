@@ -363,3 +363,57 @@ test('the fake returns the real connection models', function (): void {
 
     expect($user->connectTo($team))->toBeInstanceOf(Connection::class);
 });
+
+test('regression: asPending()->connect() and asPending()->connectAll() are recorded as invitations', function (): void {
+    $fake = Connections::fake();
+
+    $user = User::create();
+    $teamA = Team::create();
+    $teamB = Team::create();
+
+    Connections::between($user, $teamA)->asPending()->connect();
+    Connections::from($user)->toMany([$teamB])->asPending()->connectAll();
+
+    $fake->assertInvited($user, $teamA);
+    $fake->assertInvited($user, $teamB);
+    $fake->assertConnected($user, $teamA);
+    $fake->assertConnected($user, $teamB);
+    $fake->assertConnectedTimes(2);
+
+    expect(fn () => $fake->assertNothingInvited())->toThrow(AssertionFailedError::class);
+});
+
+test('regression: a plain connect that creates an invitation under default_status=pending is recorded as one', function (): void {
+    config()->set('connections.default_status', 'pending');
+
+    $fake = Connections::fake();
+
+    $user = User::create();
+    $teamA = Team::create();
+    $teamB = Team::create();
+
+    $connection = Connections::between($user, $teamA)->connect();
+    Connections::from($user)->toMany([$teamB])->connectAll();
+
+    expect($connection->isPending())->toBeTrue();
+
+    $fake->assertInvited($user, $teamA);
+    $fake->assertInvited($user, $teamB);
+    $fake->assertConnectedTimes(2);
+});
+
+test('a connect that only updates an existing connection is not recorded as an invitation', function (): void {
+    config()->set('connections.default_status', 'pending');
+
+    $user = User::create();
+    $team = Team::create();
+    Connections::between($user, $team)->connect();
+
+    $fake = Connections::fake();
+
+    Connections::between($user, $team)->withPermissions('view')->connect();
+    Connections::from($user)->toMany([$team])->withPermissions('edit')->connectAll();
+
+    $fake->assertConnected($user, $team);
+    $fake->assertNothingInvited();
+});
