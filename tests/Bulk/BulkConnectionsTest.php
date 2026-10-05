@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Connections\Exceptions\InvalidStatusTransition;
 use RoundlyConsulting\Connections\Exceptions\MissingConnectable;
 use RoundlyConsulting\Connections\Facades\Connections;
+use RoundlyConsulting\Connections\Tests\Fixtures\SecondaryConnection;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
 
@@ -102,3 +104,40 @@ test('disconnectAll throws when no connectables are staged', function (): void {
 
     Connections::from($user)->disconnectAll();
 })->throws(MissingConnectable::class);
+
+test('regression: a failed connectAll rolls back on the connection model\'s own database', function (): void {
+    SecondaryConnection::install();
+
+    $user = User::create();
+    $teamA = Team::create();
+    $teamB = Team::create();
+    Connections::between($user, $teamB)->connect();
+
+    // teamB is already accepted, so staging it as pending throws after teamA was written.
+    expect(fn () => Connections::from($user)->toMany([$teamA, $teamB])->asPending()->connectAll())
+        ->toThrow(InvalidStatusTransition::class);
+
+    expect(SecondaryConnection::query()->withTrashed()->where('connectable_id', $teamA->getKey())->exists())->toBeFalse()
+        ->and(SecondaryConnection::query()->count())->toBe(1);
+});
+
+test('regression: a failed disconnectAll rolls back on the connection model\'s own database', function (): void {
+    SecondaryConnection::install();
+
+    $user = User::create();
+    $teamA = Team::create();
+    $teamB = Team::create();
+    Connections::from($user)->toMany([$teamA, $teamB])->connectAll();
+
+    SecondaryConnection::deleting(function (SecondaryConnection $connection) use ($teamB): void {
+        if ($connection->connectable_id === $teamB->getKey()) {
+            throw new RuntimeException('boom');
+        }
+    });
+
+    expect(fn () => Connections::from($user)->toMany([$teamA, $teamB])->disconnectAll())
+        ->toThrow(RuntimeException::class, 'boom');
+
+    expect(SecondaryConnection::query()->count())->toBe(2)
+        ->and($user->isConnectedTo($teamA))->toBeTrue();
+});

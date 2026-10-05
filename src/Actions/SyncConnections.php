@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Connections\Actions;
 
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use RoundlyConsulting\Connections\Actions\Concerns\DispatchesConnectionEvents;
 use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Cache;
@@ -27,14 +26,15 @@ final readonly class SyncConnections
     /**
      * Reconcile the connector's connections to exactly the given set: connect
      * any missing, disconnect any extras, and update attributes on overlap.
-     * Runs in a transaction so a failing item rolls the whole reconcile back.
+     * Runs in a transaction on the connection model's database, so a failing
+     * item rolls the whole reconcile back.
      *
      * @param  list<SyncTarget>  $targets
      */
     public function execute(Connectable $connector, array $targets): SyncResult
     {
         /** @var SyncResult $result */
-        $result = DB::transaction(function () use ($connector, $targets): SyncResult {
+        $result = $this->database()->transaction(function () use ($connector, $targets): SyncResult {
             /** @var list<int|string> $attached */
             $attached = [];
             /** @var list<int|string> $updated */

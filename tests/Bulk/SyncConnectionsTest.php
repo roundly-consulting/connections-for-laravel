@@ -8,6 +8,7 @@ use RoundlyConsulting\Connections\DataTransferObjects\SyncTarget;
 use RoundlyConsulting\Connections\Events\ConnectionCreated;
 use RoundlyConsulting\Connections\Events\ConnectionRemoved;
 use RoundlyConsulting\Connections\Events\ConnectionUpdated;
+use RoundlyConsulting\Connections\Tests\Fixtures\SecondaryConnection;
 use RoundlyConsulting\Connections\Tests\Team;
 use RoundlyConsulting\Connections\Tests\User;
 
@@ -141,4 +142,26 @@ test('regression: of two targets for one model, the last one wins', function ():
     expect($result->attached)->toBe([$team->getKey()])
         ->and($result->updated)->toBe([])
         ->and($user->permissionsThroughConnection($team)->all())->toBe(['edit']);
+});
+
+test('regression: a failure mid-sync rolls back on the connection model\'s own database', function (): void {
+    SecondaryConnection::install();
+
+    $user = User::create();
+    $teamA = Team::create();
+    $teamB = Team::create();
+    $teamC = Team::create();
+    $user->connectTo($teamC);
+
+    // Fails on the second target's insert, after teamA's row was written.
+    SecondaryConnection::creating(function (SecondaryConnection $connection) use ($teamB): void {
+        if ($connection->connectable_id === $teamB->getKey()) {
+            throw new RuntimeException('boom');
+        }
+    });
+
+    expect(fn () => $user->syncConnections([$teamA, $teamB]))->toThrow(RuntimeException::class, 'boom');
+
+    expect(SecondaryConnection::query()->withTrashed()->where('connectable_id', $teamA->getKey())->exists())->toBeFalse()
+        ->and($user->isConnectedTo($teamC))->toBeTrue();
 });

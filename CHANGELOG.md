@@ -18,6 +18,9 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
   `assertInvited()` passes and `assertNothingInvited()` fails for them.
 - `sync()` writes a model listed twice only once (its last target wins), so `SyncResult` no
   longer reports the same id as both attached and updated.
+- `connectAll()`, `disconnectAll()` and `sync()` open their transaction on the connection
+  model's database rather than the app default, so a failure rolls the whole batch back when
+  `connections.model` lives on another connection.
 
 ## 1.0.0 - 2026-10-03
 

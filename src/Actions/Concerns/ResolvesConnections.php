@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Connections\Actions\Concerns;
 
+use Illuminate\Database\Connection as DatabaseConnection;
 use Illuminate\Database\Eloquent\Builder;
 use RoundlyConsulting\Connections\Cache;
 use RoundlyConsulting\Connections\Contracts\Connectable;
@@ -23,6 +24,16 @@ trait ResolvesConnections
     protected function query(): Builder
     {
         return $this->connectionModel()::query();
+    }
+
+    /**
+     * The database the configured model lives on. Every transaction around connection
+     * rows opens here: on the app default it would wrap none of them once a host points
+     * the model at another connection.
+     */
+    protected function database(): DatabaseConnection
+    {
+        return $this->query()->getModel()->getConnection();
     }
 
     protected function find(Connectable $connector, Connectable $connectable): ?Connection

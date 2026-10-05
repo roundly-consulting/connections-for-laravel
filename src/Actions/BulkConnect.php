@@ -6,20 +6,23 @@ namespace RoundlyConsulting\Connections\Actions;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
+use RoundlyConsulting\Connections\Actions\Concerns\ResolvesConnections;
 use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
 
 final readonly class BulkConnect
 {
+    use ResolvesConnections;
+
     public function __construct(
         private readonly CreateConnection $createConnection,
     ) {}
 
     /**
-     * Connect the connector to every connectable in one transaction. Each item
-     * still flows through CreateConnection so events and cache stay correct.
+     * Connect the connector to every connectable in one transaction on the
+     * connection model's database. Each item still flows through
+     * CreateConnection so events and cache stay correct.
      *
      * @param  list<Connectable>  $connectables
      * @param  Collection<int, string>|null  $permissions
@@ -36,7 +39,7 @@ final readonly class BulkConnect
         bool $replaceMeta = false,
     ): Collection {
         /** @var Collection<int, Connection> $created */
-        $created = DB::transaction(function () use ($connector, $connectables, $permissions, $expiresAt, $status, $meta, $replaceMeta): Collection {
+        $created = $this->database()->transaction(function () use ($connector, $connectables, $permissions, $expiresAt, $status, $meta, $replaceMeta): Collection {
             $result = new Collection;
 
             foreach ($connectables as $connectable) {

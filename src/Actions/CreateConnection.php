@@ -72,7 +72,7 @@ final readonly class CreateConnection
         Connectable $connectable,
     ): Connection {
         /** @var array{Connection, list<object>} $written */
-        $written = $this->query()->getModel()->getConnection()->transaction(
+        $written = $this->database()->transaction(
             fn (): array => $this->write($data, $connector, $connectable),
         );
 
