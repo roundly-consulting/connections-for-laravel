@@ -294,6 +294,7 @@ class PendingConnection
             $this->expiresAt,
             $this->status,
             $this->meta,
+            $this->replaceMeta,
         );
     }
 

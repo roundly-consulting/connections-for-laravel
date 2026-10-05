@@ -77,3 +77,15 @@ test('connectTo accepts a meta argument', function (): void {
 
     expect($connection->meta)->toBe(['source' => 'import']);
 });
+
+test('regression: replaceMeta overwrites the stored meta through connectAll', function (): void {
+    $user = User::create();
+    $team = Team::create();
+
+    Connections::between($user, $team)->withMeta(['old' => 1])->connect();
+
+    $connections = Connections::from($user)->toMany([$team])->withMeta(['new' => 2])->replaceMeta()->connectAll();
+
+    expect($connections->first()?->meta)->toBe(['new' => 2])
+        ->and(Connections::between($user, $team)->find()?->meta)->toBe(['new' => 2]);
+});

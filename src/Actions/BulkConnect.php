@@ -33,9 +33,10 @@ final readonly class BulkConnect
         ?CarbonInterface $expiresAt = null,
         ?ConnectionStatus $status = null,
         ?array $meta = null,
+        bool $replaceMeta = false,
     ): Collection {
         /** @var Collection<int, Connection> $created */
-        $created = DB::transaction(function () use ($connector, $connectables, $permissions, $expiresAt, $status, $meta): Collection {
+        $created = DB::transaction(function () use ($connector, $connectables, $permissions, $expiresAt, $status, $meta, $replaceMeta): Collection {
             $result = new Collection;
 
             foreach ($connectables as $connectable) {
@@ -46,6 +47,7 @@ final readonly class BulkConnect
                     $expiresAt,
                     $status,
                     $meta,
+                    $replaceMeta,
                 ));
             }
 
