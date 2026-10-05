@@ -14,9 +14,12 @@ test('it returns prunable query', function () {
 
     $prunableQuery = (new Connection)->prunable()->toRawSql();
 
+    // Identifiers quoted by the active grammar: `"` on sqlite/pgsql, backticks on mysql.
+    $wrap = (new Connection)->getConnection()->getQueryGrammar()->wrap(...);
+
     expect($prunableQuery)
         ->toBe(
-            'select * from "connections" where "expires_at" <= \'2023-09-08 09:30:00\' and "status" != \'blocked\' and "connections"."deleted_at" is null'
+            "select * from {$wrap('connections')} where {$wrap('expires_at')} <= '2023-09-08 09:30:00' and {$wrap('status')} != 'blocked' and {$wrap('connections.deleted_at')} is null"
         );
 
     Carbon::setTestNow();

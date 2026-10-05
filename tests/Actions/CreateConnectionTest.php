@@ -30,7 +30,7 @@ test('user can connect to other models with some permissions', function () {
         'connector_type' => User::class,
         'connectable_id' => $team->id,
         'connectable_type' => Team::class,
-        'permissions' => json_encode(['view']),
+        'permissions' => $this->castAsJson(['view']),
     ]);
 });
 
@@ -54,7 +54,7 @@ test('user can connect to other models with expiration', function () {
         'connector_type' => User::class,
         'connectable_id' => $team->id,
         'connectable_type' => Team::class,
-        'permissions' => json_encode([]),
+        'permissions' => $this->castAsJson([]),
         'expires_at' => today()->addDay(),
     ]);
 });
