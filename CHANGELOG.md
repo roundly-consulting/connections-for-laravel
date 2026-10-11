@@ -6,6 +6,8 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+## 1.1.1 - 2026-10-11
+
 ### Changed
 
 - Maintenance: requires the latest roundly packages — package-toolkit `^1.3.0`, enums `^1.1.0`;
