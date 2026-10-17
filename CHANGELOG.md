@@ -6,6 +6,10 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Fixed
+
+- Factories build the configured model when a host swaps it.
+
 ## 1.1.1 - 2026-10-11
 
 ### Changed

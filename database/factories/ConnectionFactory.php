@@ -7,11 +7,24 @@ namespace RoundlyConsulting\Connections\Database\Factories;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Models\Connection;
+use RoundlyConsulting\Connections\Support\ConnectionModel;
 
 /** @extends Factory<Connection> */
 final class ConnectionFactory extends Factory
 {
     protected $model = Connection::class;
+
+    /**
+     * Build the configured model, not the packaged one: a host that swaps
+     * `connections.model` gets its own class, with its casts,
+     * events and observers.
+     *
+     * @return class-string<Connection>
+     */
+    public function modelName(): string
+    {
+        return ConnectionModel::class();
+    }
 
     /** @return array<string, mixed> */
     public function definition(): array
