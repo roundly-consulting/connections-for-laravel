@@ -68,6 +68,13 @@ ArchPresets::noLocalCryptoPrimitives('RoundlyConsulting\Connections');
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
 
 /**
+ * The factory half of the seam: ConnectionFactory returns the ConnectionModel seam from
+ * `modelName()`, so a host that swapped `connections.model` gets its own rows (and events)
+ * out of `Connection::factory()` instead of the packaged class.
+ */
+ArchPresets::factoriesResolveThroughSeam(__DIR__.'/../database/factories', __DIR__.'/../src', 'Support');
+
+/**
  * The morph-key seam, guarded. Connections migrated its morph columns off raw
  * `$table->morphs()` onto `morphKey($name, KeyType::…)` so a uuid/ulid host can flip its
  * whole graph coherently — a hardcoded bigint id breaks those hosts on Postgres, and SQLite
