@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Connections\Tests\Fixtures\SwappedConnectionTestCase;
+use RoundlyConsulting\Connections\Tests\GateAfterTestCase;
 use RoundlyConsulting\Connections\Tests\GateTestCase;
 use RoundlyConsulting\Connections\Tests\TestCase;
 
@@ -39,6 +40,7 @@ uses(TestCase::class)->in(
 );
 
 uses(GateTestCase::class)->in('Gate');
+uses(GateAfterTestCase::class)->in('GateAfter');
 
 // The model-swap proofs need `connections.model` pointed at the host subclass BEFORE the
 // providers boot, so they run on their own base case in their own directory — Pest binds

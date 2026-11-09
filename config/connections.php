@@ -95,6 +95,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gate Mode
+    |--------------------------------------------------------------------------
+    |
+    | When the Gate integration answers, relative to your policies and
+    | Gate::define() abilities. One of:
+    |
+    | - "before": a Gate::before hook. A connection that grants the ability
+    |   allows it before any policy runs, so a stored "*" overrides a policy
+    |   that denies (even "delete"). Today's default.
+    | - "after": a Gate::after hook. It answers only when no policy, ability
+    |   definition or other before hook did, so a deny always wins.
+    |
+    | "after" is recommended and becomes the default in the next major. Any
+    | other value throws an InvalidConfigurationException.
+    |
+    */
+
+    'gate_mode' => env('CONNECTIONS_GATE_MODE', 'before'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Gate Wildcards
+    |--------------------------------------------------------------------------
+    |
+    | Whether wildcard grants ("*", "posts.*") count when the Gate asks. Set
+    | to false so only a grant with the exact ability name answers through the
+    | Gate; hasPermissionThroughConnection() and the other direct checks still
+    | honour wildcards.
+    |
+    */
+
+    'gate_wildcards' => env('CONNECTIONS_GATE_WILDCARDS', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Permissions
     |--------------------------------------------------------------------------
     |

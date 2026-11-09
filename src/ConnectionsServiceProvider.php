@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Connections;
 
 use Closure;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
+use RoundlyConsulting\Connections\Actions\AuthorizeThroughConnection;
 use RoundlyConsulting\Connections\Commands\MakeConnectableCommand;
 use RoundlyConsulting\Connections\Commands\NotifyExpiringConnectionsCommand;
 use RoundlyConsulting\Connections\Commands\PruneConnectionsCommand;
-use RoundlyConsulting\Connections\Contracts\Connectable;
 use RoundlyConsulting\Connections\Enums\ConnectionStatus;
 use RoundlyConsulting\Connections\Support\ConnectionModel;
 use RoundlyConsulting\Connections\Support\ConnectionsConfig;
@@ -47,6 +46,8 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
                 // a new connection starts with, never which ones.
                 'Default permissions' => self::defaultPermissions(),
                 'Gate integration' => Config::boolean('connections.register_gate') ? 'ON' : 'OFF',
+                'Gate mode' => self::orInvalid(static fn (): string => ConnectionsConfig::gateRunsAfterPolicies() ? 'AFTER POLICIES' : 'BEFORE POLICIES'),
+                'Gate wildcards' => self::orInvalid(static fn (): string => ConnectionsConfig::gateHonoursWildcards() ? 'ON' : 'OFF'),
                 'In-request cache' => Config::boolean('connections.cache.enabled', true) ? 'ON' : 'OFF',
                 'Events' => Config::boolean('connections.events.enabled', true) ? 'ON' : 'OFF',
             ]);
@@ -76,9 +77,13 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * A global `Gate::before` hook that falls through to a connection's
-     * permissions for *any* ability checked against a Connectable — not an
-     * ability definition, so it stays hand-wired.
+     * A global Gate hook that falls through to a connection's permissions for
+     * *any* ability checked against a Connectable — not an ability definition,
+     * so it stays hand-wired.
+     *
+     * `before` mode (the default) answers ahead of every policy, so a grant
+     * overrides a policy's deny. `after` mode answers only when nothing else
+     * did: Laravel keeps the first non-null result, so a deny always wins.
      */
     private function registerGate(): void
     {
@@ -86,19 +91,15 @@ final class ConnectionsServiceProvider extends PackageServiceProvider
             return;
         }
 
-        Gate::before(function (mixed $user, string $ability, array $arguments): ?bool {
-            $connectable = $arguments[0] ?? null;
+        if (ConnectionsConfig::gateRunsAfterPolicies()) {
+            Gate::after(static fn (mixed $user, string $ability, mixed $result, array $arguments): ?bool => $result === null
+                ? app(AuthorizeThroughConnection::class)->execute($user, $ability, $arguments)
+                : null);
 
-            if (! $user instanceof Model || ! $user instanceof Connectable) {
-                return null;
-            }
+            return;
+        }
 
-            if (! $connectable instanceof Model || ! $connectable instanceof Connectable) {
-                return null;
-            }
-
-            return $user->hasPermissionThroughConnection($connectable, $ability) ? true : null;
-        });
+        Gate::before(static fn (mixed $user, string $ability, array $arguments): ?bool => app(AuthorizeThroughConnection::class)->execute($user, $ability, $arguments));
     }
 
     private static function defaultStatus(): string

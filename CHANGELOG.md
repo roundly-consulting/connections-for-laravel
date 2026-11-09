@@ -6,6 +6,29 @@ All notable changes to `connections-for-laravel` are documented in this file. Th
 
 ## Unreleased
 
+### Added
+
+- `gate_mode` config (`CONNECTIONS_GATE_MODE`): `after` registers the Gate integration as a
+  `Gate::after` hook, so it answers only when no policy, ability definition or other before hook
+  did and can never override a deny. `before` (today's `Gate::before` hook, where a connection
+  grant beats a denying policy) stays the default.
+- `gate_wildcards` config (`CONNECTIONS_GATE_WILDCARDS`, on by default): set it off so only a
+  grant naming the exact ability answers through the Gate. A stored `*` or `posts.*` then no
+  longer allows every ability; `hasPermissionThroughConnection()` and the other direct checks
+  still honour wildcards.
+- `php artisan about` reports the gate mode and whether gate wildcards are on.
+
+### Security
+
+- With the Gate integration on, a connection holding `*` allowed every ability on the
+  connectable, `delete` included, over a policy that denied it. Set `connections.gate_mode` to
+  `after` (and `connections.gate_wildcards` to `false` if wildcards should never reach the Gate).
+
+### Planned for the next major
+
+- `connections.gate_mode` defaults to `after`: the Gate integration never overrides a policy's
+  deny. Hosts that rely on a connection grant beating a policy set `gate_mode` to `before`.
+
 ## 2.0.0 - 2026-11-07
 
 ### Changed

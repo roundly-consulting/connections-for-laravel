@@ -100,6 +100,23 @@ final class ConnectionsConfig
     }
 
     /**
+     * Whether the Gate integration runs after policies (`gate_mode` = `after`) instead of
+     * before them (`before`, the default when not set). Any other value throws.
+     */
+    public static function gateRunsAfterPolicies(): bool
+    {
+        return Config::oneOf('connections.gate_mode', ['before', 'after'], 'before') === 'after';
+    }
+
+    /**
+     * Whether wildcard grants answer through the Gate (`gate_wildcards`, on when not set).
+     */
+    public static function gateHonoursWildcards(): bool
+    {
+        return Config::boolean('connections.gate_wildcards', true);
+    }
+
+    /**
      * Not set: null or blank (`''` or whitespace, a host's `KEY=`), read exactly like absent.
      */
     private static function isUnset(mixed $value): bool

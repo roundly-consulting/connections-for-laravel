@@ -32,6 +32,7 @@ test('boolean flags accept off / no strings', function (string $off): void {
     config()->set('connections.events.enabled', $off);
     config()->set('connections.cache.enabled', $off);
     config()->set('connections.register_gate', $off);
+    config()->set('connections.gate_wildcards', $off);
     $user = User::create();
     $team = Team::create();
 

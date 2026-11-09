@@ -12,7 +12,9 @@ test('it ships sensible config defaults', function (): void {
         ->and(config('connections.table'))->toBe('connections')
         ->and(config('connections.cache.enabled'))->toBeTrue()
         ->and(config('connections.events.enabled'))->toBeTrue()
-        ->and(config('connections.register_gate'))->toBeFalse();
+        ->and(config('connections.register_gate'))->toBeFalse()
+        ->and(config('connections.gate_mode'))->toBe('before')
+        ->and(config('connections.gate_wildcards'))->toBeTrue();
 });
 
 // 'a custom connection model is honoured' now lives in tests/ModelSwap/, as the shipped

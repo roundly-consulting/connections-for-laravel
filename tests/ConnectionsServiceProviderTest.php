@@ -70,6 +70,8 @@ it('contributes a connections section to about', function (string $expected): vo
     'Default expiry',
     'Default permissions',
     'Gate integration',
+    'Gate mode',
+    'Gate wildcards',
     'In-request cache',
     'Events',
 ]);
@@ -111,5 +113,24 @@ it('reports the default permissions as a count, never the ability names', functi
 it('reports no default permissions when none are configured', function (): void {
     $this->artisan('about --only=connections')
         ->expectsOutputToContain('NONE')
+        ->assertExitCode(0);
+});
+
+it('reports the gate mode and wildcards in about', function (): void {
+    config()->set('connections.gate_mode', 'after');
+    config()->set('connections.gate_wildcards', false);
+
+    $this->artisan('about --only=connections')
+        ->expectsOutputToContain('AFTER POLICIES')
+        ->expectsOutputToContain('Gate wildcards')
+        ->assertExitCode(0);
+});
+
+it('reports an invalid gate mode in about instead of failing', function (): void {
+    config()->set('connections.gate_mode', 'sideways');
+    config()->set('connections.gate_wildcards', 'sometimes');
+
+    $this->artisan('about --only=connections')
+        ->expectsOutputToContain('INVALID')
         ->assertExitCode(0);
 });

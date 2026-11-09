@@ -44,6 +44,8 @@ it('renders the connections section without leaking the host permission vocabula
             'Default expiry',
             'Default permissions',
             'Gate integration',
+            'Gate mode',
+            'Gate wildcards',
             'In-request cache',
             'Events',
             // The positive halves that prove the lines are reporting rather than silently
@@ -51,6 +53,7 @@ it('renders the connections section without leaking the host permission vocabula
             // contribution once the names are withheld.
             '2 granted on connect',
             'ENFORCED',
+            'BEFORE POLICIES',
             'connections',
         ],
     );
